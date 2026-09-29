@@ -9,6 +9,7 @@ use Porta\Editor\BufferService;
 use Porta\Editor\DiagnosticSeverity;
 use Porta\Ide;
 use Porta\Lsp\Uri;
+use Porta\McpPlugin\Tests\Support\TalksMcp;
 use Porta\Plugin\Lifecycle\PluginLifecycle;
 use Porta\Plugin\Runtime\PluginSettings;
 use Porta\Tests\Support\ClearsPortaLsp;
@@ -31,14 +32,8 @@ final class McpE2eTest extends TestCase
     use ClearsPortaLsp;
     use GitBinary;
     use RunsIde;
+    use TalksMcp;
     use UsesBundledPlugins;
-
-    /** @var resource|null */
-    private $client;
-
-    private int $nextId = 0;
-
-    private string $received = '';
 
     private static function project(string $porta = '{"enabledPlugins":["mcp"]}'): TempProject
     {
@@ -48,109 +43,6 @@ final class McpE2eTest extends TestCase
             'img.png' => "\x89PNG",
             '.porta.json' => $porta,
         ]);
-    }
-
-    private function connect(TempProject $project): void
-    {
-        $client = \stream_socket_client('unix://'.$project->path('.porta/mcp.sock'), timeout: 1.0);
-        $this->assertNotFalse($client, 'the plugin listens once the IDE is up');
-        \stream_set_blocking($client, enable: false);
-        $this->client = $client;
-        $this->request('initialize', ['protocolVersion' => '2025-06-18', 'capabilities' => new \stdClass(), 'clientInfo' => ['name' => 'test', 'version' => '1']]);
-        \fwrite($client, '{"jsonrpc":"2.0","method":"notifications/initialized"}'."\n");
-    }
-
-    /**
-     * Send one request and pump the loop until its answer arrives.
-     *
-     * @param array<string, mixed> $params
-     *
-     * @return array<string, mixed>
-     */
-    private function request(string $method, array $params = []): array
-    {
-        $this->assertIsResource($this->client);
-        $id = ++$this->nextId;
-        \fwrite($this->client, \json_encode(['jsonrpc' => '2.0', 'id' => $id, 'method' => $method, 'params' => (object) $params], \JSON_THROW_ON_ERROR)."\n");
-
-        return $this->awaitMessage(static fn (array $message): bool => $id === ($message['id'] ?? null), $method.' #'.$id);
-    }
-
-    /**
-     * @param \Closure(array<string, mixed>): bool $matches
-     *
-     * @return array<string, mixed>
-     */
-    private function awaitMessage(\Closure $matches, string $what): array
-    {
-        $client = $this->client;
-        $found = null;
-        $this->await(function () use ($client, $matches, &$found): bool {
-            $chunk = \fread($client, length: 65_536);
-            $this->received .= false === $chunk ? '' : $chunk;
-            while (false !== ($end = \strpos($this->received, needle: "\n"))) {
-                $line = \substr($this->received, offset: 0, length: $end);
-                $this->received = \substr($this->received, $end + 1);
-                $message = \json_decode($line, associative: true);
-                if (\is_array($message) && $matches($message)) {
-                    $found = $message;
-
-                    return true;
-                }
-            }
-
-            return false;
-        }, what: $what);
-
-        /** @var array<string, mixed> $found */
-        return $found;
-    }
-
-    /**
-     * Call a tool; its text, and whether it was an error.
-     *
-     * @param array<string, mixed> $arguments
-     *
-     * @return array{0: string, 1: bool}
-     */
-    private function call(string $tool, array $arguments = []): array
-    {
-        $answer = $this->request('tools/call', ['name' => $tool, 'arguments' => (object) $arguments]);
-        $this->assertArrayHasKey('result', $answer, $tool.' answered with a result, not a protocol error');
-        /** @var array{content: list<array{text: string}>, isError: bool} $result */
-        $result = $answer['result'];
-
-        return [$result['content'][0]['text'], $result['isError']];
-    }
-
-    /** @param array<string, mixed> $arguments */
-    private function ok(string $tool, array $arguments = []): string
-    {
-        [$text, $error] = $this->call($tool, $arguments);
-        $this->assertFalse($error, $tool.' failed: '.$text);
-
-        return $text;
-    }
-
-    /**
-     * @param array<string, mixed> $arguments
-     *
-     * @return array<array-key, mixed>
-     */
-    private function json(string $tool, array $arguments = []): array
-    {
-        $decoded = \json_decode($this->ok($tool, $arguments), associative: true);
-        $this->assertIsArray($decoded);
-
-        return $decoded;
-    }
-
-    /** @param array<string, mixed> $arguments */
-    private function refused(string $tool, array $arguments, string $says): void
-    {
-        [$text, $error] = $this->call($tool, $arguments);
-        $this->assertTrue($error, $tool.' should have refused, and answered: '.$text);
-        $this->assertStringContainsString($says, $text);
     }
 
     public function testAnAgentReadsNavigatesAndEditsTheIde(): void
@@ -163,7 +55,7 @@ final class McpE2eTest extends TestCase
             100 => function (Tui $tui, $terminal, Ide $ide) use ($project, $a, $b): void {
                 $this->connect($project);
                 $names = \array_column($this->request('tools/list')['result']['tools'], 'name');
-                $this->assertSame(['context', 'read_buffer', 'open_file', 'diagnostics', 'notify', 'replace_buffer', 'insert_text', 'definition', 'references', 'hover', 'symbols'], $names);
+                $this->assertSame(['context', 'read_buffer', 'open_file', 'diagnostics', 'notify', 'replace_buffer', 'insert_text', 'search', 'definition', 'references', 'hover', 'symbols'], $names);
 
                 // Nothing open yet.
                 $context = $this->json('context');

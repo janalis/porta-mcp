@@ -10,6 +10,8 @@ use Porta\McpPlugin\Server\SocketServer;
 use Porta\McpPlugin\Server\ToolCatalog;
 use Porta\McpPlugin\Tools\CodeTools;
 use Porta\McpPlugin\Tools\CoreTools;
+use Porta\McpPlugin\Tools\RunTools;
+use Porta\McpPlugin\Tools\SearchTools;
 use Porta\Overlay\State\ToastSeverity;
 use Porta\Plugin\Api\AbstractPlugin;
 use Porta\Plugin\Api\DisposablePlugin;
@@ -37,7 +39,24 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
             true,
             hint: 'replace_buffer and insert_text: unsaved, one undo step each. Off hides both',
         );
+        $api->registerSetting(
+            'allowSave',
+            'Let agents save files',
+            'bool',
+            false,
+            hint: 'save_buffer writes an open file to disk as Ctrl+S does; a file changed on disk is never overwritten',
+        );
         new CoreTools($api)->register();
+        new SearchTools($api)->register();
+        $api->registerSetting(
+            'allowRuns',
+            'Let agents run tasks and tests',
+            'bool',
+            false,
+            hint: 'run, run_tests: the Run menu\'s tasks and PHPUnit, in the terminal panel where you can watch them',
+        );
+        $api->registerSetting('runTimeout', 'Wait for a run to end (seconds)', 'int', 300, hint: 'longer, and the agent is told it is still running', min: 1, max: 3600, step: 30);
+        new RunTools($api, static fn (): int => (int) $api->setting('runTimeout'))->register();
         $api->registerSetting(
             'lspTimeout',
             'Wait for a language server (seconds)',
@@ -52,7 +71,11 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
         $catalog = new ToolCatalog(
             $api->tools(...),
             $this->name(),
-            static fn (): array => true === $api->setting('allowEdits') ? [] : CoreTools::EDITS,
+            static fn (): array => [
+                ...(true === $api->setting('allowEdits') ? [] : CoreTools::EDITS),
+                ...(true === $api->setting('allowSave') ? [] : [CoreTools::SAVE]),
+                ...(true === $api->setting('allowRuns') ? [] : RunTools::RUNS),
+            ],
         );
         $log = DiagnosticLog::forRoot($api->projectRoot(), 'mcp');
         $server = new SocketServer(

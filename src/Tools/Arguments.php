@@ -33,9 +33,60 @@ final readonly class Arguments
         if (!\is_string($this->arguments['path'])) {
             throw new \InvalidArgumentException('path is a string');
         }
-        $raw = $this->arguments['path'];
-        $realRoot = \realpath($this->root);
-        $root = false === $realRoot ? $this->root : $realRoot;
+
+        return $this->inside($this->arguments['path']);
+    }
+
+    /**
+     * A list-of-paths argument, each inside the project; null when it was not
+     * given.
+     *
+     * @return list<string>|null
+     */
+    public function paths(string $key): ?array
+    {
+        if (null === ($this->arguments[$key] ?? null)) {
+            return null;
+        }
+        $raw = \is_array($this->arguments[$key]) ? $this->arguments[$key] : [0];
+        $strings = \array_filter($raw, static fn (mixed $one): bool => \is_string($one) && '' !== $one);
+        if (!\array_is_list($raw) || \count($strings) !== \count($raw)) {
+            throw new \InvalidArgumentException($key.' is a list of paths');
+        }
+
+        return \array_values(\array_map($this->inside(...), $strings));
+    }
+
+    /** A yes/no argument; absent is no. */
+    public function flag(string $key): bool
+    {
+        return $this->flagOr($key, false);
+    }
+
+    /** A yes/no argument, $default when absent. */
+    public function flagOr(string $key, bool $default): bool
+    {
+        if (null === ($this->arguments[$key] ?? null)) {
+            return $default;
+        }
+        if (!\is_bool($this->arguments[$key])) {
+            throw new \InvalidArgumentException($key.' is true or false');
+        }
+
+        return $this->arguments[$key];
+    }
+
+    /** The project root, resolved, so every path is compared with one spelling of it. */
+    public function root(): string
+    {
+        $real = \realpath($this->root);
+
+        return false === $real ? $this->root : $real;
+    }
+
+    private function inside(string $raw): string
+    {
+        $root = $this->root();
         $path = Path::makeAbsolute($raw, $root);
         $real = \realpath($path);
         $path = false === $real ? $path : $real;

@@ -27,6 +27,9 @@ final readonly class CoreTools
     /** The tools that change a buffer — what the `allowEdits` setting hides. */
     public const array EDITS = ['replace_buffer', 'insert_text'];
 
+    /** The tool that writes to disk — what the `allowSave` setting hides. */
+    public const string SAVE = 'save_buffer';
+
     private const array NO_ARGUMENTS = ['type' => 'object', 'properties' => []];
 
     private const array SEVERITIES = [1 => 'error', 2 => 'warning', 3 => 'information', 4 => 'hint'];
@@ -99,6 +102,12 @@ final readonly class CoreTools
             ['type' => 'object', 'properties' => ['text' => ['type' => 'string']], 'required' => ['text']],
             $this->insertText(...),
         );
+        $this->api->registerTool(
+            self::SAVE,
+            'Save an open file to disk, as the user\'s Ctrl+S does. A file that changed on disk since it was opened is refused, never overwritten — tell the user instead. Without a path, the active file.',
+            ['type' => 'object', 'properties' => ['path' => $path('An open file')]],
+            $this->saveBuffer(...),
+        );
     }
 
     /**
@@ -115,7 +124,7 @@ final readonly class CoreTools
             'activeFile' => $this->api->activeFile(),
             'caret' => null === $caret ? null : ['line' => $caret['line'] + 1, 'column' => $caret['column'] + 1],
             'selectedFiles' => $this->api->selectedFiles(),
-            'openFiles' => $this->api->openFiles(),
+            'openFiles' => $this->api->openBuffers()->files(),
         ];
     }
 
@@ -123,7 +132,7 @@ final readonly class CoreTools
     private function readBuffer(array $arguments): string
     {
         $path = $this->arguments($arguments)->path() ?? $this->api->activeFile() ?? throw new \RuntimeException('No file is open');
-        $text = $this->api->bufferText($path);
+        $text = $this->api->openBuffers()->text($path);
 
         return $text ?? throw new \RuntimeException(\sprintf('%s is not open in the editor — open_file it first, or read it from disk', $path));
     }
@@ -188,13 +197,13 @@ final readonly class CoreTools
         $text = $this->arguments($arguments)->text('text');
         $path = $this->arguments($arguments)->path();
         if (null !== $path && $path !== $this->api->activeFile()) {
-            if (null === $this->api->bufferText($path) && !\is_file($path)) {
+            if (null === $this->api->openBuffers()->text($path) && !\is_file($path)) {
                 throw new \InvalidArgumentException(\sprintf('%s is not a file', $path));
             }
             $this->api->openFile($path);
         }
         $target = $this->api->activeFile();
-        if (null === $target || null === $this->api->bufferText($target) || null !== $path && $path !== $target) {
+        if (null === $target || null === $this->api->openBuffers()->text($target) || null !== $path && $path !== $target) {
             throw new \RuntimeException('No text file to replace — the active tab is not one');
         }
         $this->api->replaceDocument($text);
@@ -203,11 +212,23 @@ final readonly class CoreTools
     }
 
     /** @param array<string, mixed> $arguments */
+    private function saveBuffer(array $arguments): string
+    {
+        $path = $this->arguments($arguments)->path() ?? $this->api->activeFile() ?? throw new \RuntimeException('No file is open');
+        $why = $this->api->openBuffers()->save($path);
+        if (null !== $why) {
+            throw new \RuntimeException(\sprintf('%s was not saved: %s', $path, $why));
+        }
+
+        return 'Saved '.$path;
+    }
+
+    /** @param array<string, mixed> $arguments */
     private function insertText(array $arguments): string
     {
         $text = $this->arguments($arguments)->text('text');
         $target = $this->api->activeFile();
-        if (null === $target || null === $this->api->bufferText($target)) {
+        if (null === $target || null === $this->api->openBuffers()->text($target)) {
             throw new \RuntimeException('No text file is active to insert into');
         }
         $this->api->insertAtCaret($text);
