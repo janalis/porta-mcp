@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Porta\McpPlugin\Server;
 
+use Revolt\EventLoop;
+
 /**
  * One client's conversation: JSON-RPC 2.0 in, the MCP server half of it out.
  *
@@ -16,6 +18,13 @@ namespace Porta\McpPlugin\Server;
  * suspension until a subprocess answers, and the loop goes on painting the
  * IDE meanwhile; the answer is sent whenever it comes, so two calls may
  * overlap and answer out of order, which JSON-RPC's ids exist for.
+ *
+ * A call the client CANCELS (`notifications/cancelled`) is not answered: the
+ * protocol asks exactly that, and the handler — a git process, a forge
+ * request — cannot be stopped from here, only forgotten. A call that carries
+ * a `progressToken` gets a `notifications/progress` every
+ * {@see HEARTBEAT} seconds until it answers, so a client that resets its
+ * timeout on progress does not give up on a slow forge.
  */
 final class Session
 {
@@ -30,14 +39,24 @@ final class Session
     public const int METHOD_NOT_FOUND = -32_601;
     public const int INVALID_PARAMS = -32_602;
 
+    /** Seconds between two progress notifications for a call still running. */
+    public const float HEARTBEAT = 2.0;
+
     /** Until the client says `notifications/initialized`, nothing unsolicited is sent. */
     private bool $initialized = false;
 
-    /** @param \Closure(array<string, mixed>): void $send puts one message on the wire */
+    /** @var array<string, true> calls not yet answered, keyed by {@see key()} — a cancelled one leaves */
+    private array $calls = [];
+
+    /**
+     * @param \Closure(array<string, mixed>): void $send      puts one message on the wire
+     * @param float                                $heartbeat seconds between two progress notifications
+     */
     public function __construct(
         private readonly \Closure $send,
         private readonly ToolCatalog $catalog,
         private readonly string $version,
+        private readonly float $heartbeat = self::HEARTBEAT,
     ) {}
 
     /** One line off the wire. */
@@ -68,7 +87,7 @@ final class Session
             return;
         }
         if (!\array_key_exists('id', $message)) {
-            $this->notified($method);
+            $this->notified($method, \is_array($message['params'] ?? null) ? $message['params'] : []);
 
             return;
         }
@@ -101,11 +120,22 @@ final class Session
         }
     }
 
-    private function notified(string $method): void
+    /** @param array<array-key, mixed> $params */
+    private function notified(string $method, array $params): void
     {
         if ('notifications/initialized' === $method) {
             $this->initialized = true;
         }
+        $cancelled = self::validId($params['requestId'] ?? null);
+        if ('notifications/cancelled' === $method && null !== $cancelled) {
+            unset($this->calls[self::key($cancelled)]);
+        }
+    }
+
+    /** A call's key: an id is a string OR an integer, and 1 and "1" are two calls. */
+    private static function key(int|string $id): string
+    {
+        return \get_debug_type($id).':'.$id;
     }
 
     /**
@@ -141,8 +171,12 @@ final class Session
 
             return;
         }
+        $key = self::key($id);
+        $this->calls[$key] = true;
+        $heartbeat = $this->heartbeat($params, $name);
         /** @var array<string, mixed> $arguments */
-        $fiber = new \Fiber(function () use ($id, $handler, $arguments): void {
+        $fiber = new \Fiber(function () use ($id, $key, $heartbeat, $handler, $arguments): void {
+            $failed = false;
             try {
                 $answer = $handler($arguments);
                 $text = \is_string($answer)
@@ -151,13 +185,43 @@ final class Session
             } catch (\Throwable $error) {
                 // The tool's failure is the CALLER's to read, not a protocol
                 // error: the model sees it and can correct its arguments.
-                $this->result($id, ['content' => [['type' => 'text', 'text' => $error->getMessage()]], 'isError' => true]);
-
-                return;
+                $text = $error->getMessage();
+                $failed = true;
             }
-            $this->result($id, ['content' => [['type' => 'text', 'text' => $text]], 'isError' => false]);
+            if (null !== $heartbeat) {
+                EventLoop::cancel($heartbeat);
+            }
+            if (!\array_key_exists($key, $this->calls)) {
+                return; // cancelled: the client no longer wants an answer
+            }
+            unset($this->calls[$key]);
+            $this->result($id, ['content' => [['type' => 'text', 'text' => $text]], 'isError' => $failed]);
         });
         $fiber->start();
+    }
+
+    /**
+     * Start telling the client a call is still running, when it asked to be
+     * told; the timer to cancel, or null when it did not ask.
+     *
+     * @param array<array-key, mixed> $params
+     */
+    private function heartbeat(array $params, string $tool): ?string
+    {
+        $meta = \is_array($params['_meta'] ?? null) ? $params['_meta'] : [];
+        $token = \is_string($meta['progressToken'] ?? null) || \is_int($meta['progressToken'] ?? null) ? $meta['progressToken'] : null;
+        if (null === $token) {
+            return null;
+        }
+        $beat = 0;
+
+        return EventLoop::unreference(EventLoop::repeat($this->heartbeat, function () use ($token, $tool, &$beat): void {
+            ($this->send)([
+                'jsonrpc' => '2.0',
+                'method' => 'notifications/progress',
+                'params' => ['progressToken' => $token, 'progress' => ++$beat, 'message' => $tool.' is still running'],
+            ]);
+        }));
     }
 
     private static function validId(mixed $id): int|string|null

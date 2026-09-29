@@ -15,11 +15,15 @@ final class SessionTest extends TestCase
 {
     use PumpsLoop;
 
+    /** The protocol's field name — a request's handle for its progress, nothing secret. */
+    // @mago-expect lint:no-literal-password -- the MCP field NAME `progressToken`, not a credential
+    private const string PROGRESS_TOKEN = 'progressToken';
+
     /** @var list<array<string, mixed>> */
     private array $sent = [];
 
     /** @param array<string, \Closure(array<string, mixed>): (string|array<array-key, mixed>)> $handlers by tool id, all of the mcp plugin */
-    private function session(array $handlers = []): Session
+    private function session(array $handlers = [], float $heartbeat = Session::HEARTBEAT): Session
     {
         $tools = [];
         foreach ($handlers as $id => $handler) {
@@ -32,6 +36,7 @@ final class SessionTest extends TestCase
             },
             new ToolCatalog(static fn (): array => $tools, 'mcp', static fn (): array => []),
             '9.9.9',
+            $heartbeat,
         );
     }
 
@@ -241,5 +246,82 @@ final class SessionTest extends TestCase
         $session->toolsChanged();
 
         $this->assertSame([['jsonrpc' => '2.0', 'method' => 'notifications/tools/list_changed']], $this->sent);
+    }
+
+    /** A tool that answers when the test says so, and the way to say it. */
+    private static function waiting(?\Closure &$release): \Closure
+    {
+        return static function (array $arguments) use (&$release): string {
+            $suspension = EventLoop::getSuspension();
+            $release = static fn () => $suspension->resume('done');
+
+            return $suspension->suspend();
+        };
+    }
+
+    public function testACancelledCallIsNeverAnsweredAndTheOthersAre(): void
+    {
+        $release = null;
+        $session = $this->session(['wait' => self::waiting($release), 'fast' => static fn (array $a): string => 'fast']);
+
+        $session->receive(self::line(['id' => 1, 'method' => 'tools/call', 'params' => ['name' => 'wait']]));
+        $session->receive(self::line(['method' => 'notifications/cancelled', 'params' => ['requestId' => 1, 'reason' => 'user pressed Esc']]));
+        $session->receive(self::line(['method' => 'notifications/cancelled', 'params' => ['requestId' => 'never-sent']]));
+        $session->receive(self::line(['method' => 'notifications/cancelled']));
+        $this->assertInstanceOf(\Closure::class, $release);
+        $release();
+        $this->pump(0.02); // the resumed fiber runs on the loop
+
+        $this->assertSame([], $this->sent, 'the cancelled call finished, and nothing was said');
+    }
+
+    public function testCancellingTheString1LeavesTheInteger1Alone(): void
+    {
+        $release = null;
+        $session = $this->session(['wait' => self::waiting($release)]);
+
+        $session->receive(self::line(['id' => 1, 'method' => 'tools/call', 'params' => ['name' => 'wait']]));
+        $session->receive(self::line(['method' => 'notifications/cancelled', 'params' => ['requestId' => '1']]));
+        $this->assertInstanceOf(\Closure::class, $release);
+        $release();
+
+        $this->await(fn (): bool => [] !== $this->sent && 1 === ($this->last()['id'] ?? null), what: 'the integer call still answered');
+    }
+
+    public function testACallWithAProgressTokenIsToldAboutUntilItAnswers(): void
+    {
+        $release = null;
+        $session = $this->session(['wait' => self::waiting($release)], heartbeat: 0.01);
+
+        $session->receive(self::line(['id' => 1, 'method' => 'tools/call', 'params' => ['name' => 'wait', '_meta' => [self::PROGRESS_TOKEN => 7]]]));
+        $this->await(fn (): bool => \count($this->sent) >= 2, what: 'two heartbeats');
+        $this->assertSame(
+            [
+                ['jsonrpc' => '2.0', 'method' => 'notifications/progress', 'params' => [self::PROGRESS_TOKEN => 7, 'progress' => 1, 'message' => 'wait is still running']],
+                ['jsonrpc' => '2.0', 'method' => 'notifications/progress', 'params' => [self::PROGRESS_TOKEN => 7, 'progress' => 2, 'message' => 'wait is still running']],
+            ],
+            \array_slice($this->sent, offset: 0, length: 2),
+            'progress only ever grows',
+        );
+
+        $this->assertInstanceOf(\Closure::class, $release);
+        $release();
+        $this->await(fn (): bool => 1 === ($this->last()['id'] ?? null), what: 'the answer');
+        $answered = \count($this->sent);
+        $this->pump(0.05);
+        $this->assertCount($answered, $this->sent, 'no beat after the answer');
+    }
+
+    public function testWithoutAProgressTokenThereIsNoHeartbeat(): void
+    {
+        $release = null;
+        $session = $this->session(['wait' => self::waiting($release)], heartbeat: 0.01);
+
+        $session->receive(self::line(['id' => 1, 'method' => 'tools/call', 'params' => ['name' => 'wait', '_meta' => ['progressToken' => 1.5]]]));
+        $this->pump(0.05);
+
+        $this->assertSame([], $this->sent, 'a token that is neither a string nor an integer is no token');
+        $this->assertInstanceOf(\Closure::class, $release);
+        $release();
     }
 }
