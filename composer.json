@@ -1,0 +1,25 @@
+{
+    "name": "porta/mcp",
+    "description": "An MCP server inside the IDE: agents read the buffers and diagnostics, navigate, edit, and call every tool other plugins offer",
+    "type": "porta-plugin",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.5",
+        "revolt/event-loop": "^1.0",
+        "symfony/console": "^8.2",
+        "symfony/filesystem": "^8.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "Porta\\McpPlugin\\": "src/"
+        }
+    },
+    "extra": {
+        "porta": {
+            "api": 1,
+            "commands": {
+                "mcp": "Porta\\McpPlugin\\Console\\McpCommand"
+            }
+        }
+    }
+}
