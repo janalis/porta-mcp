@@ -8,6 +8,7 @@ use Porta\McpPlugin\Server\Session;
 use Porta\McpPlugin\Server\SocketPath;
 use Porta\McpPlugin\Server\SocketServer;
 use Porta\McpPlugin\Server\ToolCatalog;
+use Porta\McpPlugin\Tools\CodeTools;
 use Porta\McpPlugin\Tools\CoreTools;
 use Porta\Overlay\State\ToastSeverity;
 use Porta\Plugin\Api\AbstractPlugin;
@@ -37,6 +38,16 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
             hint: 'replace_buffer and insert_text: unsaved, one undo step each. Off hides both',
         );
         new CoreTools($api)->register();
+        $api->registerSetting(
+            'lspTimeout',
+            'Wait for a language server (seconds)',
+            'int',
+            15,
+            hint: 'definition, references, hover, symbols: how long before the agent is told it did not answer',
+            min: 1,
+            max: 300,
+        );
+        new CodeTools($api, static fn (): int => (int) $api->setting('lspTimeout'))->register();
 
         $catalog = new ToolCatalog(
             $api->tools(...),

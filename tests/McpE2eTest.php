@@ -149,7 +149,7 @@ final class McpE2eTest extends TestCase
     private function refused(string $tool, array $arguments, string $says): void
     {
         [$text, $error] = $this->call($tool, $arguments);
-        $this->assertTrue($error, $tool.' should have refused');
+        $this->assertTrue($error, $tool.' should have refused, and answered: '.$text);
         $this->assertStringContainsString($says, $text);
     }
 
@@ -163,7 +163,7 @@ final class McpE2eTest extends TestCase
             100 => function (Tui $tui, $terminal, Ide $ide) use ($project, $a, $b): void {
                 $this->connect($project);
                 $names = \array_column($this->request('tools/list')['result']['tools'], 'name');
-                $this->assertSame(['context', 'read_buffer', 'open_file', 'diagnostics', 'notify', 'replace_buffer', 'insert_text'], $names);
+                $this->assertSame(['context', 'read_buffer', 'open_file', 'diagnostics', 'notify', 'replace_buffer', 'insert_text', 'definition', 'references', 'hover', 'symbols'], $names);
 
                 // Nothing open yet.
                 $context = $this->json('context');
@@ -260,6 +260,67 @@ final class McpE2eTest extends TestCase
         ]);
 
         $this->assertFileDoesNotExist($project->path('.porta/mcp.sock'), 'the socket goes with the IDE');
+    }
+
+    public function testAnAgentAsksTheLanguageServerAboutAnyFile(): void
+    {
+        $project = new TempProject([
+            'src/A.php' => "<?php\nclass A {}\n",
+            'src/B.php' => "<?php\nnew A();\n",
+            'README.md' => "# hi\n",
+            '.porta.json' => \json_encode(
+                [
+                    'enabledPlugins' => ['mcp'],
+                    'lsp' => ['php' => \PHP_BINARY.' '.__DIR__.'/fixtures/code-lsp-server.php'], // php only: README.md has none
+                    'plugins' => ['mcp' => ['lspTimeout' => 1]],
+                ],
+                \JSON_THROW_ON_ERROR,
+            ),
+        ]);
+        $a = (string) \realpath($project->path('src/A.php'));
+        $b = (string) \realpath($project->path('src/B.php'));
+
+        // B is open in the editor; A never is — it is lent to the server.
+        $this->runIde($project, $project->path('src/B.php'), [
+            100 => function (Tui $tui, $terminal, Ide $ide) use ($project, $a, $b): void {
+                // The timeout is one second, and a server still starting is
+                // not the case under test.
+                $this->awaitLspSession($ide);
+                $this->connect($project);
+                $names = \array_column($this->request('tools/list')['result']['tools'], 'name');
+                foreach (['definition', 'references', 'hover', 'symbols'] as $tool) {
+                    $this->assertContains($tool, $names);
+                }
+
+                $this->assertSame(
+                    [['line' => 2, 'column' => 7, 'path' => $a, 'text' => 'class A {}']],
+                    $this->json('definition', ['path' => 'src/B.php', 'line' => 2, 'column' => 5]),
+                    '1-based both ways, with the line\'s text',
+                );
+                $this->assertSame(
+                    ['class A {}', 'new A();'],
+                    \array_column($this->json('references', ['path' => 'src/A.php', 'line' => 2, 'column' => 7]), 'text'),
+                    'asked about a file nobody has open',
+                );
+                $this->assertStringContainsString('The one class.', $this->ok('hover', ['path' => 'src/A.php', 'line' => 2]));
+                $this->assertSame('The language server has nothing to say about this position', $this->ok('hover', ['path' => 'src/A.php', 'line' => 1]));
+
+                $symbols = $this->json('symbols', ['query' => 'A']);
+                $this->assertSame(['name' => 'A', 'kind' => 'class', 'path' => $a, 'line' => 2], $symbols[0]);
+                $this->assertSame('symbol', $symbols[1]['kind'], 'a kind nobody named');
+
+                // Every way it can say no.
+                $this->refused('definition', ['path' => 'src/B.php', 'line' => 9], 'Index not ready');
+                $this->refused('hover', ['path' => 'src/B.php', 'line' => 9], 'Index not ready');
+                $this->refused('symbols', ['query' => 'boom'], 'Index not ready');
+                $this->refused('hover', ['path' => 'src/B.php', 'line' => 10], 'The language server did not answer within 1s');
+                $this->refused('definition', ['path' => 'README.md', 'line' => 1], 'No language server is configured for README.md');
+                $this->refused('definition', ['path' => 'src/B.php'], 'line is required');
+                $this->refused('references', ['line' => 1], 'path is required');
+                $this->refused('symbols', [], 'query is required');
+                $this->assertSame([['path' => $b, 'dirty' => false]], $this->json('context')['openFiles'], 'no tab was opened for A');
+            },
+        ]);
     }
 
     public function testOtherPluginsToolsAreServedAndALiveChangeIsAnnounced(): void

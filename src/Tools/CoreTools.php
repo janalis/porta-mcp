@@ -6,7 +6,6 @@ namespace Porta\McpPlugin\Tools;
 
 use Porta\Overlay\State\ToastSeverity;
 use Porta\Plugin\Api\PluginApi;
-use Symfony\Component\Filesystem\Path;
 
 /**
  * The IDE itself as tools: what is open and where the caret is, the buffers'
@@ -20,9 +19,8 @@ use Symfony\Component\Filesystem\Path;
  * prints them, which is what a model reading them expects — and the API is
  * 0-based, so every crossing converts here and nowhere else.
  *
- * A path is project-relative or absolute, and must be inside the project:
- * this is the user's IDE, and a caller has no business opening their
- * `~/.ssh` in it.
+ * Arguments are read through {@see Arguments}, which keeps every path inside
+ * the project.
  */
 final readonly class CoreTools
 {
@@ -124,7 +122,7 @@ final readonly class CoreTools
     /** @param array<string, mixed> $arguments */
     private function readBuffer(array $arguments): string
     {
-        $path = $this->optionalPath($arguments) ?? $this->api->activeFile() ?? throw new \RuntimeException('No file is open');
+        $path = $this->arguments($arguments)->path() ?? $this->api->activeFile() ?? throw new \RuntimeException('No file is open');
         $text = $this->api->bufferText($path);
 
         return $text ?? throw new \RuntimeException(\sprintf('%s is not open in the editor — open_file it first, or read it from disk', $path));
@@ -133,14 +131,14 @@ final readonly class CoreTools
     /** @param array<string, mixed> $arguments */
     private function openFile(array $arguments): string
     {
-        $path = $this->optionalPath($arguments) ?? throw new \InvalidArgumentException('path is required');
+        $path = $this->arguments($arguments)->requiredPath();
         if (!\is_file($path)) {
             throw new \InvalidArgumentException(\sprintf('%s is not a file', $path));
         }
         $this->api->openFile($path);
-        $line = self::position($arguments, 'line');
+        $line = $this->arguments($arguments)->position('line');
         if (null !== $line) {
-            $this->api->jumpTo($line - 1, (self::position($arguments, 'column') ?? 1) - 1);
+            $this->api->jumpTo($line - 1, ($this->arguments($arguments)->position('column') ?? 1) - 1);
         }
 
         return 'Opened '.$path;
@@ -154,7 +152,7 @@ final readonly class CoreTools
     private function diagnostics(array $arguments): array
     {
         $rows = [];
-        foreach ($this->api->diagnostics($this->optionalPath($arguments)) as $diagnostic) {
+        foreach ($this->api->codeIntelligence()->diagnostics($this->arguments($arguments)->path()) as $diagnostic) {
             $rows[] = [
                 ...$diagnostic,
                 'line' => $diagnostic['line'] + 1,
@@ -187,8 +185,8 @@ final readonly class CoreTools
     /** @param array<string, mixed> $arguments */
     private function replaceBuffer(array $arguments): string
     {
-        $text = self::text($arguments);
-        $path = $this->optionalPath($arguments);
+        $text = $this->arguments($arguments)->text('text');
+        $path = $this->arguments($arguments)->path();
         if (null !== $path && $path !== $this->api->activeFile()) {
             if (null === $this->api->bufferText($path) && !\is_file($path)) {
                 throw new \InvalidArgumentException(\sprintf('%s is not a file', $path));
@@ -207,7 +205,7 @@ final readonly class CoreTools
     /** @param array<string, mixed> $arguments */
     private function insertText(array $arguments): string
     {
-        $text = self::text($arguments);
+        $text = $this->arguments($arguments)->text('text');
         $target = $this->api->activeFile();
         if (null === $target || null === $this->api->bufferText($target)) {
             throw new \RuntimeException('No text file is active to insert into');
@@ -217,55 +215,9 @@ final readonly class CoreTools
         return 'Inserted into '.$target.' — unsaved';
     }
 
-    /**
-     * The `path` argument as an absolute path inside the project, or null when
-     * none was given. Symlinks are followed before the check, so a link in the
-     * project pointing out of it is outside too.
-     *
-     * @param array<string, mixed> $arguments
-     */
-    private function optionalPath(array $arguments): ?string
-    {
-        if (null === ($arguments['path'] ?? null) || '' === $arguments['path']) {
-            return null;
-        }
-        if (!\is_string($arguments['path'])) {
-            throw new \InvalidArgumentException('path is a string');
-        }
-        $raw = $arguments['path'];
-        $root = $this->api->projectRoot();
-        $realRoot = \realpath($root);
-        $root = false === $realRoot ? $root : $realRoot;
-        $path = Path::makeAbsolute($raw, $root);
-        $real = \realpath($path);
-        $path = false === $real ? $path : $real;
-        if (!Path::isBasePath($root, $path)) {
-            throw new \InvalidArgumentException(\sprintf('%s is outside the project', $raw));
-        }
-
-        return $path;
-    }
-
     /** @param array<string, mixed> $arguments */
-    private static function position(array $arguments, string $key): ?int
+    private function arguments(array $arguments): Arguments
     {
-        if (null === ($arguments[$key] ?? null)) {
-            return null;
-        }
-        if (!\is_int($arguments[$key]) || $arguments[$key] < 1) {
-            throw new \InvalidArgumentException($key.' is a positive integer');
-        }
-
-        return $arguments[$key];
-    }
-
-    /** @param array<string, mixed> $arguments */
-    private static function text(array $arguments): string
-    {
-        if (!\is_string($arguments['text'] ?? null)) {
-            throw new \InvalidArgumentException('text is required');
-        }
-
-        return $arguments['text'];
+        return new Arguments($arguments, $this->api->projectRoot());
     }
 }
