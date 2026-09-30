@@ -59,7 +59,10 @@ final class ClaudeCodeLink
         $mention = ['filePath' => $current['filePath']];
         if (!$current['selection']['isEmpty']) {
             $mention['lineStart'] = $current['selection']['start']['line'];
-            $mention['lineEnd'] = $current['selection']['end']['line'];
+            $end = $current['selection']['end'];
+            // Ending at a line's first column, a selection takes none of that
+            // line: Shift+Down over two lines names those two, not three.
+            $mention['lineEnd'] = 0 === $end['character'] ? $end['line'] - 1 : $end['line'];
         }
         $this->server->broadcast('at_mentioned', $mention);
 

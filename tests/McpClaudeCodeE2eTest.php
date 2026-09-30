@@ -174,6 +174,10 @@ final class McpClaudeCodeE2eTest extends TestCase
                 // "Send selection to Claude Code": an @ mention of those lines.
                 Services::resolve($ide, CommandRegistry::class)->run('mcp:mention_in_claude');
                 $mention = $this->cliAwait(static fn (array $m): bool => 'at_mentioned' === ($m['method'] ?? null), 'the mention');
+                $this->assertSame(['filePath' => $a, 'lineStart' => 0, 'lineEnd' => 0], $mention['params'], 'the line it ends at the start of is not in it');
+                $tui->handleInput("\x1b[1;2C"); // shift+right: into the second line
+                Services::resolve($ide, CommandRegistry::class)->run('mcp:mention_in_claude');
+                $mention = $this->cliAwait(static fn (array $m): bool => 'at_mentioned' === ($m['method'] ?? null), 'the mention, a character on');
                 $this->assertSame(['filePath' => $a, 'lineStart' => 0, 'lineEnd' => 1], $mention['params']);
                 $tui->handleInput("\x1b[B"); // the selection cleared
                 $this->cliAwait(static fn (array $m): bool => self::isSelection($m, 'src/A.php') && true === $m['params']['selection']['isEmpty'], 'no selection');
