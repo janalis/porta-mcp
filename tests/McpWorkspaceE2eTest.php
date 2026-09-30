@@ -6,6 +6,7 @@ namespace Porta\McpPlugin\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Porta\Editor\BufferManager;
+use Porta\Event\CommandRunRequested;
 use Porta\Ide;
 use Porta\LocalHistory\SnapshotStore;
 use Porta\McpPlugin\Tests\Support\TalksMcp;
@@ -18,6 +19,8 @@ use Porta\Tests\Support\Services;
 use Porta\Tests\Support\TempProject;
 use Porta\Tests\Support\UsesBundledPlugins;
 use Symfony\Component\Clock\NativeClock;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
+use Symfony\Component\Tui\Terminal\VirtualTerminal;
 use Symfony\Component\Tui\Tui;
 
 /**
@@ -97,7 +100,7 @@ final class McpWorkspaceE2eTest extends TestCase
         ]);
         $root = (string) \realpath($project->dir);
         $this->runIde($project, $project->path('src/A.php'), [
-            100 => function (Tui $tui, $terminal, Ide $ide) use ($project, $root): void {
+            100 => function (Tui $tui, VirtualTerminal $terminal, Ide $ide) use ($project, $root): void {
                 $this->connect($project);
                 $history = new SnapshotStore($project->dir, new NativeClock());
 
@@ -127,6 +130,11 @@ final class McpWorkspaceE2eTest extends TestCase
                 $this->assertStringContainsString('restorable from Recent Changes', $this->ok('delete_file', ['path' => 'src/B.php']));
                 $this->assertFileDoesNotExist($root.'/src/B.php');
                 $this->assertSame(["<?php\n// b\n"], \array_map(static fn (array $row): ?string => $history->read($row['file']), $history->list($root.'/src/B.php')));
+
+                // What the status cell's menu does: local history's own list, asked for by id.
+                Services::resolve($ide, EventDispatcherInterface::class)->dispatch(new CommandRunRequested('local-history:recent_changes'));
+                $this->awaitPainted($tui, $terminal, 'B.php');
+                $this->assertStringContainsString('Recent Changes', \implode("\n", $this->screenGrid($tui, $terminal)));
             },
         ]);
     }

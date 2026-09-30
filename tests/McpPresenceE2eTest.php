@@ -14,6 +14,7 @@ use Porta\Tests\Support\Probe;
 use Porta\Tests\Support\RunsIde;
 use Porta\Tests\Support\Services;
 use Porta\Tests\Support\TempProject;
+use Porta\Tests\Support\Toasts;
 use Porta\Tests\Support\UsesBundledPlugins;
 use Porta\Ui\Glyphs;
 use Porta\Workbench\Menu\MenuItem;
@@ -115,7 +116,7 @@ final class McpPresenceE2eTest extends TestCase
                 $this->assertInstanceOf(StatusCell::class, $cell);
                 $this->assertNotNull($cell->menu);
                 $items = ($cell->menu)();
-                $this->assertSame(['Go to A.php (test)', '', 'Stop showing agents'], \array_map(static fn (MenuItem $item): string => $item->label, $items));
+                $this->assertSame(['Go to A.php (test)', '', 'Recent Changes', 'Stop showing agents'], \array_map(static fn (MenuItem $item): string => $item->label, $items));
                 $this->ok('edit_buffer', ['path' => 'src/B.php', 'oldText' => '// b', 'newText' => '// b again']);
                 $items = ($cell->menu)();
                 $this->assertNotNull($items[0]->run);
@@ -123,6 +124,9 @@ final class McpPresenceE2eTest extends TestCase
                 $this->assertSame((string) \realpath($project->path('src/B.php')), $this->json('context')['activeFile'], 'gone to the file the agent is on');
                 $this->assertNotNull($items[2]->run);
                 ($items[2]->run)();
+                $this->assertContains('Nothing answers to local-history:recent_changes — is its plugin enabled?', Toasts::all($ide), 'local history is off in this project, and the user hears so');
+                $this->assertNotNull($items[3]->run);
+                ($items[3]->run)();
                 $this->await(fn (): bool => !\str_contains($this->screen($tui, $terminal), Glyphs::AGENT), what: 'the marks gone from the menu');
                 $settings->change('mcp', 'showAgents', true);
 

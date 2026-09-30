@@ -7,6 +7,7 @@ namespace Porta\McpPlugin\Tools;
 use Porta\Event\AgentActivity;
 use Porta\Event\AgentEditing;
 use Porta\Event\AgentLeft;
+use Porta\Event\CommandRunRequested;
 use Porta\Plugin\Api\PluginApi;
 use Porta\Plugin\Api\ToolCaller;
 use Porta\Ui\Glyphs;
@@ -105,8 +106,9 @@ final class Presence
     }
 
     /**
-     * The cell's menu: the file each agent is at, to go and look — and a way
-     * to stop seeing agents without a trip to the settings.
+     * The cell's menu: the file each agent is at, to go and look; the recent
+     * changes, where whatever an agent replaced or deleted can be restored;
+     * and a way to stop seeing agents without a trip to the settings.
      *
      * @return list<MenuItem>
      */
@@ -122,6 +124,9 @@ final class Presence
             });
         }
         $items[] = MenuItem::separator();
+        // Local history's, by id: everything an agent replaced or deleted is
+        // listed there, and this plugin does not depend on that one.
+        $items[] = new MenuItem($this->api->trans('Recent Changes'), '', fn () => $this->api->emit(new CommandRunRequested('local-history:recent_changes')));
         $items[] = new MenuItem($this->api->trans('Stop showing agents'), '', fn () => $this->api->changeSetting('showAgents', false));
 
         return $items;
