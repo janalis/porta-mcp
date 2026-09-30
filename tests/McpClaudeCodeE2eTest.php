@@ -341,7 +341,7 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $this->assertSame(['DIFF_REJECTED', 'B.php (same)'], $this->verdict($id));
                 $this->assertContains('Put B.php back as it was', Toasts::all($ide));
 
-                // Accepted, after the user touched it up: the file is saved as it stands.
+                // Accepted, after the user touched it up: answered as it stands, for the CLI to write.
                 $id = $this->propose($tui, $terminal, $a, "<?php\n// one\n// TWO\n// three\n", 'A.php (edit)');
                 $this->assertSame($a, $buffers->active()?->path, 'brought forward to be read');
                 $this->assertSame("<?php\n// one\n// TWO\n// three\n", $buffers->get($a)?->document->getText());
@@ -360,7 +360,11 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $tui->handleInput("\x1b\x19"); // ctrl+alt+y: keep
                 $this->assertContains('Kept Claude\'s change to A.php', Toasts::all($ide));
                 $this->assertSame(['FILE_SAVED', "<?php\n// one\n!// TWO\n// three\n"], $this->verdict($id));
-                $this->assertSame("<?php\n// one\n!// TWO\n// three\n", \file_get_contents($a), 'saved');
+                $this->assertSame("<?php\n// one\n// two\n// three\n", \file_get_contents($a), 'not saved: the CLI refuses to write a file changed since Claude read it');
+                \file_put_contents($a, data: "<?php\n// one\n!// TWO\n// three\n"); // as the CLI then does
+                \clearstatcache();
+                $ide->pollFilesystem();
+                $this->assertFalse($buffers->get($a)?->isDirty(), 'the buffer holds what was written: saved');
                 $this->assertFileDoesNotExist($offered[1][1], 'the copy goes with the verdict');
                 $this->assertDirectoryDoesNotExist(\dirname($offered[1][1]));
 
@@ -467,7 +471,7 @@ final class McpClaudeCodeE2eTest extends TestCase
 
                 $tui->handleInput("\x1b\x19"); // ctrl+alt+y, from inside the comparison
                 $this->assertSame(['FILE_SAVED', "<?php\necho 'as proposed';\n"], $this->verdict($id));
-                $this->assertSame("<?php\necho 'as proposed';\n", \file_get_contents($a));
+                $this->assertSame("<?php\necho 'as it is';\n", \file_get_contents($a), 'the CLI writes it');
             },
         ]);
     }

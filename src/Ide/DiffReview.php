@@ -19,10 +19,12 @@ use Revolt\EventLoop\Suspension;
  *
  * Porta shows the proposal where the user reads code: in the file itself,
  * brought forward, the changed lines replaced as one edit, the caret on the
- * first of them — and asks. Accept saves the file as it now stands, with
- * whatever the user touched up first, and answers `FILE_SAVED` and that text;
- * reject puts the old text back and answers `DIFF_REJECTED`. The answers are
- * the ones the CLI reads from VS Code, block by block.
+ * first of them — and asks. Accept answers `FILE_SAVED` and the text as it
+ * now stands, with whatever the user touched up first; reject puts the old
+ * text back and answers `DIFF_REJECTED`. The answers are the ones the CLI
+ * reads from VS Code, block by block. Accept does not save: the CLI writes
+ * the file itself, and refuses to if it changed since Claude read it — the
+ * buffer, holding exactly what is written, then reads as saved.
  *
  * A file with unsaved edits here is not the text the CLI proposed against,
  * so its proposal is turned down at once rather than laid over the user's
@@ -165,7 +167,6 @@ final class DiffReview
         $buffers = $this->api->openBuffers();
         $path = $proposal['path'];
         if ($accept) {
-            $buffers->save($path);
             $proposal['suspension']->resume(new TextBlocks(['FILE_SAVED', (string) $buffers->text($path)]));
 
             return;
