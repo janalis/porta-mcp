@@ -27,14 +27,26 @@ final readonly class Arguments
     /** The `path` argument as an absolute path inside the project, or null when none was given. */
     public function path(): ?string
     {
-        if (null === ($this->arguments['path'] ?? null) || '' === $this->arguments['path']) {
+        return $this->pathAt('path');
+    }
+
+    /** A path argument by name, absolute and inside the project, or null when it was not given. */
+    public function pathAt(string $key): ?string
+    {
+        if (null === ($this->arguments[$key] ?? null) || '' === $this->arguments[$key]) {
             return null;
         }
-        if (!\is_string($this->arguments['path'])) {
-            throw new \InvalidArgumentException('path is a string');
+        if (!\is_string($this->arguments[$key])) {
+            throw new \InvalidArgumentException($key.' is a string');
         }
 
-        return $this->inside($this->arguments['path']);
+        return $this->inside($this->arguments[$key]);
+    }
+
+    /** {@see pathAt()}, required. */
+    public function requiredPathAt(string $key): string
+    {
+        return $this->pathAt($key) ?? throw new \InvalidArgumentException($key.' is required');
     }
 
     /**
@@ -88,8 +100,16 @@ final readonly class Arguments
     {
         $root = $this->root();
         $path = Path::makeAbsolute($raw, $root);
+        // A file that does not exist yet — one to create, a move's target —
+        // is resolved through its folder, so a project behind a symlink
+        // spells it the way it spells everything else.
         $real = \realpath($path);
-        $path = false === $real ? $path : $real;
+        $folder = \realpath(\dirname($path));
+        $path = match (true) {
+            false !== $real => $real,
+            false !== $folder => $folder.'/'.\basename($path),
+            default => $path,
+        };
         if (!Path::isBasePath($root, $path)) {
             throw new \InvalidArgumentException(\sprintf('%s is outside the project', $raw));
         }
@@ -99,7 +119,7 @@ final readonly class Arguments
 
     public function requiredPath(): string
     {
-        return $this->path() ?? throw new \InvalidArgumentException('path is required');
+        return $this->requiredPathAt('path');
     }
 
     /** A 1-based line or column, or null when it was not given. */

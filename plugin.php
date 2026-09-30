@@ -10,6 +10,7 @@ use Porta\McpPlugin\Server\SocketServer;
 use Porta\McpPlugin\Server\ToolCatalog;
 use Porta\McpPlugin\Tools\CodeTools;
 use Porta\McpPlugin\Tools\CoreTools;
+use Porta\McpPlugin\Tools\FileTools;
 use Porta\McpPlugin\Tools\Opener;
 use Porta\McpPlugin\Tools\Presence;
 use Porta\McpPlugin\Tools\RunTools;
@@ -87,6 +88,14 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
             false,
             hint: 'run, run_tests: the Run menu\'s tasks and PHPUnit, in the terminal panel where you can watch them',
         );
+        $api->registerSetting(
+            'allowFileOps',
+            'Let agents create, move and delete files',
+            'bool',
+            false,
+            hint: 'create_file, move_file, delete_file: a deleted file\'s text goes to local history, restorable from Recent Changes',
+        );
+        new FileTools($api, $presence)->register();
         $api->registerSetting('runTimeout', 'Wait for a run to end (seconds)', 'int', 300, hint: 'longer, and the agent is told it is still running', min: 1, max: 3600, step: 30);
         new RunTools($api, static fn (): int => (int) $api->setting('runTimeout'))->register();
         $api->registerSetting(
@@ -109,6 +118,7 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
                 // A rename rewrites the files that are not open: an edit AND a save.
                 ...(true === $api->setting('allowEdits') && true === $api->setting('allowSave') ? [] : [CodeTools::RENAME]),
                 ...(true === $api->setting('allowRuns') ? [] : RunTools::RUNS),
+                ...(true === $api->setting('allowFileOps') ? [] : FileTools::FILE_OPS),
             ],
         );
         $log = DiagnosticLog::forRoot($api->projectRoot(), 'mcp');

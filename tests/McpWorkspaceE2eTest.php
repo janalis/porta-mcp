@@ -7,6 +7,7 @@ namespace Porta\McpPlugin\Tests;
 use PHPUnit\Framework\TestCase;
 use Porta\Editor\BufferManager;
 use Porta\Ide;
+use Porta\LocalHistory\SnapshotStore;
 use Porta\McpPlugin\Tests\Support\TalksMcp;
 use Porta\Run\RunController;
 use Porta\Terminal\TerminalSession;
@@ -16,6 +17,7 @@ use Porta\Tests\Support\RunsIde;
 use Porta\Tests\Support\Services;
 use Porta\Tests\Support\TempProject;
 use Porta\Tests\Support\UsesBundledPlugins;
+use Symfony\Component\Clock\NativeClock;
 use Symfony\Component\Tui\Tui;
 
 /**
@@ -74,6 +76,57 @@ final class McpWorkspaceE2eTest extends TestCase
                 $this->connect($followed);
                 $this->ok('edit_buffer', ['path' => 'src/B.php', 'oldText' => 'two', 'newText' => '2']);
                 $this->assertSame((string) \realpath($followed->path('src/B.php')), $this->json('context')['activeFile'], 'followed: brought forward');
+            },
+        ]);
+    }
+
+    public function testAgentsCreateMoveAndDeleteFilesAndLocalHistoryKeepsWhatTheyReplaced(): void
+    {
+        $off = self::project();
+        $this->runIde($off, null, [
+            100 => function (Tui $tui, $terminal, Ide $ide) use ($off): void {
+                $this->connect($off);
+                $this->assertNotContains('delete_file', $this->names(), 'off by default');
+            },
+        ]);
+
+        $project = new TempProject([
+            'src/A.php' => "<?php\n// needle one\necho 'a';\n",
+            'src/B.php' => "<?php\n// b\n",
+            '.porta.json' => \json_encode(['enabledPlugins' => ['mcp', 'local-history'], 'plugins' => ['mcp' => ['allowFileOps' => true]]], \JSON_THROW_ON_ERROR),
+        ]);
+        $root = (string) \realpath($project->dir);
+        $this->runIde($project, $project->path('src/A.php'), [
+            100 => function (Tui $tui, $terminal, Ide $ide) use ($project, $root): void {
+                $this->connect($project);
+                $history = new SnapshotStore($project->dir, new NativeClock());
+
+                $this->assertSame('Created '.$root.'/src/New/C.php', $this->ok('create_file', ['path' => 'src/New/C.php', 'text' => "<?php\n"]));
+                $this->assertSame("<?php\n", \file_get_contents($root.'/src/New/C.php'));
+                $this->refused('create_file', ['path' => 'src/B.php'], 'B.php already exists');
+
+                // The first edit keeps the version before it.
+                $this->ok('edit_buffer', ['oldText' => '// needle one', 'newText' => '// agent']);
+                $this->ok('edit_buffer', ['oldText' => '// agent', 'newText' => '// agent again']);
+                $this->assertSame(
+                    ["<?php\n// needle one\necho 'a';\n"],
+                    \array_map(static fn (array $row): ?string => $history->read($row['file']), $history->list($root.'/src/A.php')),
+                    'once per agent and file',
+                );
+
+                // A move takes the tab, its unsaved edit and its history along.
+                $this->assertSame(\sprintf('Moved %1$s/src/A.php to %1$s/lib/A2.php', $root), $this->ok('move_file', ['from' => 'src/A.php', 'to' => 'lib/A2.php']));
+                $this->assertSame([['path' => $root.'/lib/A2.php', 'dirty' => true]], $this->json('context')['openFiles']);
+                $this->assertStringContainsString('// agent again', $this->ok('read_buffer', ['path' => 'lib/A2.php']));
+                $this->assertCount(1, $history->list($root.'/lib/A2.php'));
+                $this->refused('move_file', ['from' => 'nowhere.php', 'to' => 'x.php'], 'is not there to rename');
+
+                // A delete keeps the text in local history; unsaved edits and folders are refused.
+                $this->refused('delete_file', ['path' => 'lib/A2.php'], 'unsaved changes');
+                $this->refused('delete_file', ['path' => 'src/New'], 'is a folder');
+                $this->assertStringContainsString('restorable from Recent Changes', $this->ok('delete_file', ['path' => 'src/B.php']));
+                $this->assertFileDoesNotExist($root.'/src/B.php');
+                $this->assertSame(["<?php\n// b\n"], \array_map(static fn (array $row): ?string => $history->read($row['file']), $history->list($root.'/src/B.php')));
             },
         ]);
     }

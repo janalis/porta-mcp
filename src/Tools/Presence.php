@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Porta\McpPlugin\Tools;
 
 use Porta\Event\AgentActivity;
+use Porta\Event\AgentEditing;
 use Porta\Event\AgentLeft;
 use Porta\Plugin\Api\PluginApi;
 use Porta\Plugin\Api\ToolCaller;
@@ -30,6 +31,9 @@ final class Presence
     /** @var array<string, array{name: string, kind: AgentActivityKind, path: string}> caller id => what it did last */
     private array $last = [];
 
+    /** @var array<string, array<string, true>> caller id => the files it has changed since it connected */
+    private array $changed = [];
+
     /**
      * @param \Closure(): bool  $show   whether to show agents at all
      * @param \Closure(): bool  $cursor whether to show their caret and name in the editor
@@ -54,10 +58,25 @@ final class Presence
         $this->report($caller, $path, AgentActivityKind::Editing, $line, $column);
     }
 
-    /** $caller is gone: everything shown for it goes. */
+    /**
+     * $caller is about to change $path, which holds $text now: the first time
+     * it does so since it connected, what the file held is handed on for
+     * recovery ({@see AgentEditing}) — whatever the settings say about SHOWING
+     * agents, since this is not showing.
+     */
+    public function before(ToolCaller $caller, string $path, string $text): void
+    {
+        if (\array_key_exists($path, $this->changed[$caller->id] ?? [])) {
+            return;
+        }
+        $this->changed[$caller->id][$path] = true;
+        $this->api->emit(new AgentEditing($path, $text));
+    }
+
+    /** $caller is gone: everything shown for it goes, and its next session keeps a fresh "before". */
     public function left(ToolCaller $caller): void
     {
-        unset($this->last[$caller->id]);
+        unset($this->last[$caller->id], $this->changed[$caller->id]);
         $this->api->emit(new AgentLeft($caller->id));
         $this->api->refreshStatusSegments();
     }

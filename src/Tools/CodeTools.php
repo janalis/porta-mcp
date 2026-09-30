@@ -249,6 +249,7 @@ final readonly class CodeTools
     private function format(array $arguments, ToolCaller $caller): string
     {
         $path = $this->opener->open(new Arguments($arguments, $this->api->projectRoot())->path());
+        $this->presence->before($caller, $path, (string) $this->api->openBuffers()->text($path));
         $this->presence->editing($caller, $path);
         /** @var array{0: int, 1: ?string} $answer */
         $answer = $this->wait(fn (\Closure $done) => $this->api->codeIntelligence()->format($path, static fn (int $applied, ?string $error) => $done([$applied, $error])));

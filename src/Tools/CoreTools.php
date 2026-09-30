@@ -282,6 +282,7 @@ final readonly class CoreTools
         $target = $this->opener->open($this->arguments($arguments)->path());
         $old = (string) $this->api->openBuffers()->text($target);
         [$endLine, $endColumn] = self::lineAndColumn($old, \strlen($old));
+        $this->presence->before($caller, $target, $old);
         $this->change($target, 0, 0, $endLine, $endColumn, $text);
         $this->presence->editing($caller, $target);
 
@@ -309,6 +310,7 @@ final readonly class CoreTools
         }
         [$line, $column] = self::lineAndColumn($text, $at);
         [$endLine, $endColumn] = self::lineAndColumn($text, $at + \strlen($old));
+        $this->presence->before($caller, $path, $text);
         $this->change($path, $line, $column, $endLine, $endColumn, $new);
         // Where a typist who wrote it would have stopped: after the new text.
         [$newLines, $lastColumn] = self::lineAndColumn($new, \strlen($new));
