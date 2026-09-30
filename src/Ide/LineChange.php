@@ -16,15 +16,19 @@ namespace Porta\McpPlugin\Ide;
 final readonly class LineChange
 {
     /**
-     * @param array{int, int} $start 0-based line and byte column
-     * @param array{int, int} $end   the same, exclusive
-     * @param int             $first the first changed line
+     * @param array{int, int} $start   0-based line and byte column
+     * @param array{int, int} $end     the same, exclusive
+     * @param int             $first   the first changed line
+     * @param list<string>    $removed the lines the change takes out, in order
+     * @param list<string>    $added   the lines it puts in, in order
      */
     private function __construct(
         public array $start,
         public array $end,
         public string $text,
         public int $first,
+        public array $removed,
+        public array $added,
     ) {}
 
     /** The edit from $from to $to, or null when they are the same text. */
@@ -45,8 +49,9 @@ final readonly class LineChange
         if ($endLine === $head && [] === $added) {
             return null;
         }
+        $removed = \array_slice($old, $head, $endLine - $head);
         if ($endLine < \count($old)) {
-            return new self([$head, 0], [$endLine, 0], [] === $added ? '' : \implode("\n", $added)."\n", $head);
+            return new self([$head, 0], [$endLine, 0], [] === $added ? '' : \implode("\n", $added)."\n", $head, $removed, $added);
         }
         $last = \count($old) - 1;
         $before = $head - 1;
@@ -59,6 +64,6 @@ final readonly class LineChange
         // @mago-expect analysis:redundant-comparison,redundant-logical-operation -- the same: $before is -1 then
         $lead = $before >= 0 && [] !== $added ? "\n" : '';
 
-        return new self($start, [$last, \strlen($old[$last])], $lead.\implode("\n", $added), $head);
+        return new self($start, [$last, \strlen($old[$last])], $lead.\implode("\n", $added), $head, $removed, $added);
     }
 }

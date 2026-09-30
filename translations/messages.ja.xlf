@@ -54,6 +54,10 @@
         <source>Claude proposed a change to %file%, which has unsaved edits here — save or discard them, then ask again</source>
         <target>Claude が %file% の変更を提案しましたが、未保存の編集があります — 保存または破棄してから再度依頼してください</target>
       </trans-unit>
+      <trans-unit id="14">
+        <source>No difference: the proposal is the text as it is</source>
+        <target>差分なし：提案は現在のテキストと同じです</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

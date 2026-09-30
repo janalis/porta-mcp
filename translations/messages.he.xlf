@@ -54,6 +54,10 @@
         <source>Claude proposed a change to %file%, which has unsaved edits here — save or discard them, then ask again</source>
         <target>Claude הציע שינוי ב־%file%, שיש בו כאן שינויים שלא נשמרו — שמרו או בטלו אותם ובקשו שוב</target>
       </trans-unit>
+      <trans-unit id="14">
+        <source>No difference: the proposal is the text as it is</source>
+        <target>אין הבדל: ההצעה זהה לטקסט הקיים</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

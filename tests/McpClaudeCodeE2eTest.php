@@ -324,6 +324,7 @@ final class McpClaudeCodeE2eTest extends TestCase
                 // The same text proposed: shown, nothing to change, still the user's call.
                 $id = $this->propose($tui, $terminal, $root.'/src/B.php', "<?php\n", 'B.php (same)');
                 $this->assertFalse($buffers->get($root.'/src/B.php')?->isDirty());
+                $this->awaitPainted($tui, $terminal, 'No difference: the proposal is the text as it is');
                 $tui->handleInput("\x1b[B");
                 $tui->handleInput("\r");
                 $this->assertSame(['DIFF_REJECTED', 'B.php (same)'], $this->verdict($id));
@@ -338,6 +339,9 @@ final class McpClaudeCodeE2eTest extends TestCase
                     Services::resolve($ide, CodeEditorWidget::class)->decorations->remoteCaretsIn($a),
                     'Claude Code shows at its change, as any agent does',
                 );
+                $this->awaitPainted($tui, $terminal, '- // two');
+                $this->awaitPainted($tui, $terminal, '+ // TWO');
+                $this->assertStringContainsString('// one', \implode("\n", $this->screenGrid($tui, $terminal)), 'with the line before it');
                 $buffers->get($a)?->document->insert('!');
                 $tui->handleInput("\r"); // Accept — the first choice
                 $this->assertSame(['FILE_SAVED', "<?php\n// one\n!// TWO\n// three\n"], $this->verdict($id));

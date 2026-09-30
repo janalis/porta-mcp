@@ -34,6 +34,12 @@ use Revolt\EventLoop\Suspension;
  */
 final class DiffReview
 {
+    /** The dock list the change is spelled out in: what goes, what comes, around it. */
+    public const string LIST = 'claude-proposal';
+
+    /** Unchanged lines shown before and after the change, for where it is. */
+    private const int CONTEXT = 2;
+
     /** @var array<string, array{path: string, original: string, created: bool, suspension: Suspension<TextBlocks>}> tab name => the proposal waiting for the user */
     private array $pending = [];
 
@@ -80,6 +86,7 @@ final class DiffReview
         // the agent's caret and mark where it changes the text.
         $this->presence->before($caller, $path, $original);
         $first = $this->replace($path, $original, $proposed);
+        $this->spell($path, $tab, $original, $proposed);
         $this->api->jumpTo($first);
         $this->presence->editing($caller, $path, $first);
         /** @var Suspension<TextBlocks> $suspension */
@@ -122,6 +129,7 @@ final class DiffReview
             return; // decided already, or never asked
         }
         unset($this->pending[$tab]);
+        $this->api->updateList(self::LIST, []);
         $buffers = $this->api->openBuffers();
         $path = $proposal['path'];
         if ($accept) {
@@ -148,6 +156,41 @@ final class DiffReview
             ],
             fn (string $choice) => $this->decide($tab, 'accept' === $choice),
         );
+    }
+
+    /**
+     * The change as a unified hunk in the dock — the lines it takes out,
+     * which the file in front no longer shows, then the ones it puts in, with
+     * a little of what is around — each row a way to the line it is about.
+     */
+    private function spell(string $path, string $tab, string $from, string $to): void
+    {
+        $change = LineChange::between($from, $to);
+        $rows = [['path' => '', 'line' => 0, 'text' => $tab]];
+        if (null === $change) {
+            $rows[] = ['path' => '', 'line' => 0, 'text' => $this->api->trans('No difference: the proposal is the text as it is')];
+            $this->api->showList(self::LIST, $rows);
+
+            return;
+        }
+        $old = \explode("\n", $from);
+        $new = \explode("\n", $to);
+        $head = $change->first;
+        $row = static fn (int $line, string $mark, string $text): array => ['path' => $path, 'line' => $line, 'text' => $mark.' '.$text];
+        for ($line = \max(0, $head - self::CONTEXT); $line < $head; ++$line) {
+            $rows[] = $row($line, mark: ' ', text: $old[$line]);
+        }
+        foreach ($change->removed as $text) {
+            $rows[] = $row($head, mark: '-', text: $text);
+        }
+        foreach ($change->added as $offset => $text) {
+            $rows[] = $row($head + $offset, mark: '+', text: $text);
+        }
+        $after = $head + \count($change->added);
+        for ($line = $after; $line < \min(\count($new), $after + self::CONTEXT); ++$line) {
+            $rows[] = $row($line, mark: ' ', text: $new[$line]);
+        }
+        $this->api->showList(self::LIST, $rows);
     }
 
     /** Make $path's text $to as ONE edit over the lines that differ; the first of them (0-based). */

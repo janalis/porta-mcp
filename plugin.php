@@ -153,6 +153,7 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
         $resolved = \realpath($api->projectRoot());
         $root = false === $resolved ? $api->projectRoot() : $resolved;
         $feed = new SelectionFeed($api);
+        $api->registerListTool(DiffReview::LIST, 'Claude\'s Proposed Change');
         $diffs = new DiffReview($api, $presence);
         $ideCatalog = new ToolCatalog(new IdeTools($api, $feed, $root, $diffs, $presence)->rows(...), $this->name(), static fn (): array => []);
         $ideServer = new IdeServer(

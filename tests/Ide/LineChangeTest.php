@@ -55,5 +55,6 @@ final class LineChangeTest extends TestCase
 
         $this->assertInstanceOf(LineChange::class, $change);
         $this->assertSame([[2, 0], [3, 0], "X\n"], [$change->start, $change->end, $change->text]);
+        $this->assertSame([['3'], ['X']], [$change->removed, $change->added], 'what goes, what comes');
     }
 }

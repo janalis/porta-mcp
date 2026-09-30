@@ -54,6 +54,10 @@
         <source>Claude proposed a change to %file%, which has unsaved edits here — save or discard them, then ask again</source>
         <target>Claude propuso un cambio en %file%, que tiene cambios sin guardar aquí — guárdalos o descártalos y vuelve a pedirlo</target>
       </trans-unit>
+      <trans-unit id="14">
+        <source>No difference: the proposal is the text as it is</source>
+        <target>Sin diferencias: la propuesta es el texto tal cual</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>
