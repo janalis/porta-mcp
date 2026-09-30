@@ -58,6 +58,26 @@
         <source>No difference: the proposal is the text as it is</source>
         <target>差分なし：提案は現在のテキストと同じです</target>
       </trans-unit>
+      <trans-unit id="15">
+        <source>Claude proposes changes to %file% — Ctrl+Alt+Y keep · Ctrl+Alt+U put back</source>
+        <target>Claude が %file% の変更を提案しています — Ctrl+Alt+Y 保持 · Ctrl+Alt+U 元に戻す</target>
+      </trans-unit>
+      <trans-unit id="16">
+        <source>Kept Claude's change to %file%</source>
+        <target>%file% への Claude の変更を保持しました</target>
+      </trans-unit>
+      <trans-unit id="17">
+        <source>Put %file% back as it was</source>
+        <target>%file% を元に戻しました</target>
+      </trans-unit>
+      <trans-unit id="18">
+        <source>Accept Claude's Change</source>
+        <target>Claude の変更を承認</target>
+      </trans-unit>
+      <trans-unit id="19">
+        <source>Reject Claude's Change</source>
+        <target>Claude の変更を却下</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

@@ -17,6 +17,8 @@ use Porta\McpPlugin\Tests\Support\TalksClaudeCode;
 use Porta\Plugin\Lifecycle\PluginLifecycle;
 use Porta\Plugin\Runtime\PluginSettings;
 use Porta\Tests\Support\ClearsPortaLsp;
+use Porta\Tests\Support\GitBinary;
+use Porta\Tests\Support\PreservesPath;
 use Porta\Tests\Support\Probe;
 use Porta\Tests\Support\RunsIde;
 use Porta\Tests\Support\Services;
@@ -25,6 +27,7 @@ use Porta\Tests\Support\Toasts;
 use Porta\Tests\Support\UsesBundledPlugins;
 use Porta\Ui\Glyphs;
 use Porta\Widget\CodeEditorWidget;
+use Porta\Workbench\View\ViewRegistry;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\Tui\Terminal\VirtualTerminal;
 use Symfony\Component\Tui\Tui;
@@ -37,6 +40,8 @@ use Symfony\Component\Tui\Tui;
 final class McpClaudeCodeE2eTest extends TestCase
 {
     use ClearsPortaLsp;
+    use GitBinary;
+    use PreservesPath;
     use RunsIde;
     use TalksClaudeCode;
     use UsesBundledPlugins;
@@ -329,11 +334,12 @@ final class McpClaudeCodeE2eTest extends TestCase
 
                 // The same text proposed: shown, nothing to change, still the user's call.
                 $id = $this->propose($tui, $terminal, $root.'/src/B.php', "<?php\n", 'B.php (same)');
+                $this->assertContains('Claude proposes changes to B.php — Ctrl+Alt+Y keep · Ctrl+Alt+U put back', Toasts::all($ide), 'shown side by side, it is settled by keys');
                 $this->assertFalse($buffers->get($root.'/src/B.php')?->isDirty());
                 $this->awaitPainted($tui, $terminal, 'No difference: the proposal is the text as it is');
-                $tui->handleInput("\x1b[B");
-                $tui->handleInput("\r");
+                $tui->handleInput("\x1b\x15"); // ctrl+alt+u: put back
                 $this->assertSame(['DIFF_REJECTED', 'B.php (same)'], $this->verdict($id));
+                $this->assertContains('Put B.php back as it was', Toasts::all($ide));
 
                 // Accepted, after the user touched it up: the file is saved as it stands.
                 $id = $this->propose($tui, $terminal, $a, "<?php\n// one\n// TWO\n// three\n", 'A.php (edit)');
@@ -351,7 +357,8 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $this->awaitPainted($tui, $terminal, '+ // TWO');
                 $this->assertStringContainsString('// one', \implode("\n", $this->screenGrid($tui, $terminal)), 'with the line before it');
                 $buffers->get($a)?->document->insert('!');
-                $tui->handleInput("\r"); // Accept — the first choice
+                $tui->handleInput("\x1b\x19"); // ctrl+alt+y: keep
+                $this->assertContains('Kept Claude\'s change to A.php', Toasts::all($ide));
                 $this->assertSame(['FILE_SAVED', "<?php\n// one\n!// TWO\n// three\n"], $this->verdict($id));
                 $this->assertSame("<?php\n// one\n!// TWO\n// three\n", \file_get_contents($a), 'saved');
                 $this->assertFileDoesNotExist($offered[1][1], 'the copy goes with the verdict');
@@ -360,8 +367,7 @@ final class McpClaudeCodeE2eTest extends TestCase
                 // Rejected: the old text back.
                 $id = $this->propose($tui, $terminal, $a, "<?php\n", 'A.php (cut)');
                 $this->assertSame("<?php\n", $buffers->get($a)?->document->getText(), 'lines at the end go, newline and all');
-                $tui->handleInput("\x1b[B");
-                $tui->handleInput("\r"); // Reject
+                $tui->handleInput("\x1b\x15"); // ctrl+alt+u
                 $this->assertSame(['DIFF_REJECTED', 'A.php (cut)'], $this->verdict($id));
                 $this->assertSame("<?php\n// one\n!// TWO\n// three\n", $buffers->get($a)?->document->getText());
                 $this->assertFalse($buffers->get($a)?->isDirty(), 'back to what is on disk');
@@ -370,7 +376,6 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $c = $root.'/src/New/C.php';
                 $id = $this->propose($tui, $terminal, $c, "<?php\n// new\n", 'C.php');
                 $this->assertFileExists($c);
-                $tui->handleInput("\x1b");
                 $this->assertTrue(Services::resolve($ide, CommandRegistry::class)->has('mcp:review_claude_change'));
                 $terminal->clearOutput();
                 Services::resolve($ide, CommandRegistry::class)->run('mcp:review_claude_change');
@@ -382,10 +387,12 @@ final class McpClaudeCodeE2eTest extends TestCase
 
                 // A second proposal under the same tab replaces the first.
                 $first = $this->propose($tui, $terminal, $a, "<?php\n// first\n", 'A.php');
-                $tui->handleInput("\x1b");
                 $second = $this->propose($tui, $terminal, $a, "<?php\n// second\n", 'A.php');
                 $this->assertSame(['DIFF_REJECTED', 'A.php'], $this->verdict($first));
                 $this->assertSame("<?php\n// second\n", $buffers->get($a)?->document->getText(), 'shown from the file as it was');
+                $terminal->clearOutput();
+                Services::resolve($ide, CommandRegistry::class)->run('mcp:review_claude_change');
+                $this->awaitPainted($tui, $terminal, 'Accept — keep and save');
                 $this->assertSame(['CLOSED_1_DIFF_TABS', false], $this->cliCall('closeAllDiffTabs'));
                 $this->assertSame(['DIFF_REJECTED', 'A.php'], $this->verdict($second));
                 $saved = \file_get_contents($a);
@@ -394,6 +401,13 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $this->assertSame(['TAB_CLOSED', false], $this->cliCall('close_tab', ['tab_name' => 'A.php']));
                 Services::resolve($ide, CommandRegistry::class)->run('mcp:review_claude_change');
                 $this->assertContains('No change from Claude is waiting', Toasts::all($ide));
+                $nothing = static fn (): int => \count(\array_filter(Toasts::all($ide), static fn (string $toast): bool => 'No change from Claude is waiting' === $toast));
+                $before = $nothing();
+                $tui->handleInput("\x1b\x19"); // the keys, with nothing waiting
+                $this->assertGreaterThan($before, $nothing(), 'keep says so');
+                $before = $nothing();
+                $tui->handleInput("\x1b\x15");
+                $this->assertGreaterThan($before, $nothing(), 'and put back');
 
                 // Unsaved edits here are not what the CLI proposed against.
                 $buffers->get($a)?->document->insert('x');
@@ -429,6 +443,31 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $this->await(static fn (): bool => "<?php\n" === $buffers->get($root.'/src/B.php')?->document->getText(), what: 'the proposal withdrawn');
                 $editor = Services::resolve($ide, CodeEditorWidget::class);
                 $this->await(static fn (): bool => [] === $editor->decorations->remoteCaretsIn($a), what: 'its marks gone with it');
+            },
+        ]);
+    }
+
+    public function testSideBySideTheVerdictIsGivenByKeysFromTheComparison(): void
+    {
+        self::skipWithoutGit();
+        \putenv('PATH='.\PORTA_TEST_PRISTINE_PATH); // the comparison runs git diff --no-index
+        $project = new TempProject(['src/A.php' => "<?php\necho 'as it is';\n", '.porta.json' => '{"enabledPlugins":["mcp","git"]}']);
+        $project->initGit();
+        $project->commitAll('init');
+        $a = (string) \realpath($project->path('src/A.php'));
+
+        $this->runIde($project, $project->path('src/A.php'), [
+            100 => function (Tui $tui, VirtualTerminal $terminal, Ide $ide) use ($a): void {
+                $this->connectCli($this->config->dir);
+                $id = $this->propose($tui, $terminal, $a, "<?php\necho 'as proposed';\n", 'A.php');
+                $view = Services::resolve($ide, ViewRegistry::class)->find('git');
+                $this->await(static fn (): bool => true === $view?->isOpen(), what: 'the comparison');
+                $this->awaitPainted($tui, $terminal, "echo 'as it is';");
+                $this->awaitPainted($tui, $terminal, "echo 'as proposed';");
+
+                $tui->handleInput("\x1b\x19"); // ctrl+alt+y, from inside the comparison
+                $this->assertSame(['FILE_SAVED', "<?php\necho 'as proposed';\n"], $this->verdict($id));
+                $this->assertSame("<?php\necho 'as proposed';\n", \file_get_contents($a));
             },
         ]);
     }

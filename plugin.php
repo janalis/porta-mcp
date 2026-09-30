@@ -179,6 +179,27 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
         );
         $claude = new ClaudeCodeLink($ideServer, $feed);
         $this->claude = $claude;
+        $nothingWaiting = static fn () => $api->notify($api->trans('No change from Claude is waiting'), ToastSeverity::Info, 4.0);
+        $api->registerCommand(
+            'accept_claude_change',
+            'Accept Claude\'s Change',
+            static function () use ($diffs, $nothingWaiting): void {
+                if (!$diffs->decideOldest(accept: true)) {
+                    $nothingWaiting();
+                }
+            },
+            ['ctrl+alt+y'],
+        );
+        $api->registerCommand(
+            'reject_claude_change',
+            'Reject Claude\'s Change',
+            static function () use ($diffs, $nothingWaiting): void {
+                if (!$diffs->decideOldest(accept: false)) {
+                    $nothingWaiting();
+                }
+            },
+            ['ctrl+alt+u'],
+        );
         $api->registerCommand('review_claude_change', 'Review Claude\'s Proposed Change', static function () use ($api, $diffs): void {
             if (!$diffs->review()) {
                 $api->notify($api->trans('No change from Claude is waiting'), ToastSeverity::Info, 4.0);

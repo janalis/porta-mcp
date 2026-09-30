@@ -58,6 +58,26 @@
         <source>No difference: the proposal is the text as it is</source>
         <target>Sin diferencias: la propuesta es el texto tal cual</target>
       </trans-unit>
+      <trans-unit id="15">
+        <source>Claude proposes changes to %file% — Ctrl+Alt+Y keep · Ctrl+Alt+U put back</source>
+        <target>Claude propone cambios en %file% — Ctrl+Alt+Y conservar · Ctrl+Alt+U restaurar</target>
+      </trans-unit>
+      <trans-unit id="16">
+        <source>Kept Claude's change to %file%</source>
+        <target>Se conservó el cambio de Claude en %file%</target>
+      </trans-unit>
+      <trans-unit id="17">
+        <source>Put %file% back as it was</source>
+        <target>%file% restaurado como estaba</target>
+      </trans-unit>
+      <trans-unit id="18">
+        <source>Accept Claude's Change</source>
+        <target>Aceptar el cambio de Claude</target>
+      </trans-unit>
+      <trans-unit id="19">
+        <source>Reject Claude's Change</source>
+        <target>Rechazar el cambio de Claude</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

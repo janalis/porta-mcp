@@ -38,6 +38,9 @@ final class DiffReview
     /** The dock list the change is spelled out in: what goes, what comes, around it. */
     public const string LIST = 'claude-proposal';
 
+    /** Where the waiting proposal is announced, replaced by its outcome. */
+    private const string SLOT = 'mcp.proposal';
+
     /** Unchanged lines shown before and after the change, for where it is. */
     private const int CONTEXT = 2;
 
@@ -94,8 +97,11 @@ final class DiffReview
         $this->presence->editing($caller, $path, $first);
         /** @var Suspension<TextBlocks> $suspension */
         $suspension = EventLoop::getSuspension();
-        $this->pending[$tab] = ['path' => $path, 'original' => $original, 'created' => $created, 'copy' => $this->offer($path, $proposed), 'suspension' => $suspension];
-        $this->ask($tab);
+        $copy = $this->offer($path, $proposed);
+        $this->pending[$tab] = ['path' => $path, 'original' => $original, 'created' => $created, 'copy' => $copy, 'suspension' => $suspension];
+        // Shown side by side, the question would sit over the comparison and
+        // keep it from scrolling: it is asked by keys instead, from anywhere.
+        null === $copy ? $this->ask($tab) : $this->announce($tab);
 
         return $suspension->suspend();
     }
@@ -109,6 +115,18 @@ final class DiffReview
         }
         $this->api->openFile($this->pending[$tab]['path']);
         $this->ask($tab);
+
+        return true;
+    }
+
+    /** Settle the oldest proposal still waiting — the keys' way; false when none is. */
+    public function decideOldest(bool $accept): bool
+    {
+        $tab = \array_key_first($this->pending);
+        if (null === $tab) {
+            return false;
+        }
+        $this->decide($tab, $accept);
 
         return true;
     }
@@ -133,6 +151,13 @@ final class DiffReview
         }
         unset($this->pending[$tab]);
         $this->api->updateList(self::LIST, []);
+        $file = \basename($proposal['path']);
+        $this->api->notify(
+            $accept ? $this->api->trans('Kept Claude\'s change to %file%', ['%file%' => $file]) : $this->api->trans('Put %file% back as it was', ['%file%' => $file]),
+            $accept ? ToastSeverity::Success : ToastSeverity::Info,
+            3.0,
+            self::SLOT,
+        );
         if (null !== $proposal['copy']) {
             \unlink($proposal['copy']);
             \rmdir(\dirname($proposal['copy']));
@@ -150,6 +175,17 @@ final class DiffReview
             $buffers->delete($path);
         }
         $proposal['suspension']->resume(new TextBlocks(['DIFF_REJECTED', $tab]));
+    }
+
+    /** Say a proposal waits, and how to settle it, for as long as it does. */
+    private function announce(string $tab): void
+    {
+        $this->api->notify(
+            $this->api->trans('Claude proposes changes to %file% — Ctrl+Alt+Y keep · Ctrl+Alt+U put back', ['%file%' => \basename($this->pending[$tab]['path'])]),
+            ToastSeverity::Info,
+            3600.0,
+            self::SLOT,
+        );
     }
 
     private function ask(string $tab): void
