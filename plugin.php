@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 use Porta\Event\ToolsChanged;
 use Porta\Ide;
+use Porta\McpPlugin\Ide\ClaudeCodeLink;
+use Porta\McpPlugin\Ide\IdeServer;
+use Porta\McpPlugin\Ide\IdeTools;
+use Porta\McpPlugin\Ide\LockFile;
+use Porta\McpPlugin\Ide\SelectionFeed;
 use Porta\McpPlugin\Server\Session;
 use Porta\McpPlugin\Server\SocketPath;
 use Porta\McpPlugin\Server\SocketServer;
@@ -32,6 +37,8 @@ use Porta\Support\DiagnosticLog;
  */
 return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
     private ?SocketServer $server = null;
+
+    private ?ClaudeCodeLink $claude = null;
 
     public function activate(PluginApi $api): void
     {
@@ -129,10 +136,56 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
         );
         $this->server = $server;
 
-        $api->onReady(static function () use ($api, $server): void {
+        // Claude Code's own IDE connection: the CLI shows the file open here
+        // and the selection, and opens files in this editor.
+        $api->registerSetting(
+            'claudeCode',
+            'Connect Claude Code to this editor',
+            'bool',
+            true,
+            hint: 'the claude CLI (/ide, or started in Porta\'s terminal) sees the open file and selection, and opens files here',
+        );
+        // Resolved: the CLI matches its working directory, which the OS hands
+        // it resolved, against the project folder — a root reached through a
+        // symlink (/tmp on macOS) would never contain it otherwise.
+        $resolved = \realpath($api->projectRoot());
+        $root = false === $resolved ? $api->projectRoot() : $resolved;
+        $feed = new SelectionFeed($api);
+        $ideCatalog = new ToolCatalog(new IdeTools($api, $feed, $root)->rows(...), $this->name(), static fn (): array => []);
+        $ideServer = new IdeServer(
+            new LockFile(LockFile::directory()),
+            [$root],
+            static fn (Closure $send, string $connection): Session => new Session($send, $ideCatalog, Ide::VERSION, $connection),
+            $log->append(...),
+        );
+        $claude = new ClaudeCodeLink($ideServer, $feed);
+        $this->claude = $claude;
+        $api->registerCommand('mention_in_claude', 'Send Selection to Claude Code', static function () use ($api, $claude): void {
+            if (0 === $claude->mention()) {
+                $api->notify($api->trans('No Claude Code is connected — run /ide in claude, or start claude in the terminal'), ToastSeverity::Warn, 5.0);
+            }
+        });
+
+        $api->onReady(static function () use ($api, $server, $claude): void {
             $error = $server->start();
             if (null !== $error) {
                 $api->notify($error, ToastSeverity::Warn, 6.0);
+            }
+            $why = true === $api->setting('claudeCode') ? $claude->start() : null;
+            if (null !== $why) {
+                $api->notify($why, ToastSeverity::Warn, 6.0);
+            }
+        });
+        $api->onSettingChanged(static function (string $key, bool|int|string $value) use ($api, $claude): void {
+            if ('claudeCode' !== $key) {
+                return;
+            }
+            $why = true === $value ? $claude->start() : null;
+            if (false === $value) {
+                $claude->stop();
+            }
+            if (null !== $why) {
+                $api->notify($why, ToastSeverity::Warn, 6.0);
             }
         });
         $api->on(ToolsChanged::class, $server->toolsChanged(...));
@@ -148,5 +201,6 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
     public function deactivate(): void
     {
         $this->server?->stop();
+        $this->claude?->stop();
     }
 };

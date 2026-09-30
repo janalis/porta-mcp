@@ -22,6 +22,14 @@
         <source>Stop showing agents</source>
         <target>Agenten nicht mehr anzeigen</target>
       </trans-unit>
+      <trans-unit id="6">
+        <source>Send Selection to Claude Code</source>
+        <target>Auswahl an Claude Code senden</target>
+      </trans-unit>
+      <trans-unit id="7">
+        <source>No Claude Code is connected — run /ide in claude, or start claude in the terminal</source>
+        <target>Kein Claude Code verbunden — /ide in claude ausführen oder claude im Terminal starten</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>
