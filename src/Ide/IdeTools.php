@@ -181,10 +181,9 @@ final readonly class IdeTools
         $uri = \is_string($arguments['uri'] ?? null) && '' !== $arguments['uri'] ? $arguments['uri'] : null;
         $byFile = [];
         foreach ($this->api->codeIntelligence()->diagnostics(null === $uri ? null : Uri::toPath($uri) ?? $uri) as $row) {
-            $at = ['line' => $row['line'], 'character' => $row['column']];
+            $range = ['start' => ['line' => $row['line'], 'character' => $row['column']], 'end' => ['line' => $row['line'], 'character' => $row['endColumn'] ?? $row['column']]];
             $byFile[$row['path']][] =
-                ['message' => $row['message'], 'severity' => self::SEVERITIES[$row['severity']] ?? 'Hint', 'range' => ['start' => $at, 'end' => $at]]
-                + (\array_key_exists('source', $row) ? ['source' => $row['source']] : []);
+                ['message' => $row['message'], 'severity' => self::SEVERITIES[$row['severity']] ?? 'Hint', 'range' => $range] + (\array_key_exists('source', $row) ? ['source' => $row['source']] : []);
         }
         $files = [];
         foreach ($byFile as $path => $diagnostics) {

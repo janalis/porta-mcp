@@ -148,7 +148,7 @@ final class McpClaudeCodeE2eTest extends TestCase
                                 [
                                     'message' => 'Unused',
                                     'severity' => 'Warning',
-                                    'range' => ['start' => ['line' => 2, 'character' => 5], 'end' => ['line' => 2, 'character' => 5]],
+                                    'range' => ['start' => ['line' => 2, 'character' => 5], 'end' => ['line' => 2, 'character' => 8]],
                                     'source' => 'phpstan',
                                 ],
                                 ['message' => 'Boom', 'severity' => 'Error', 'range' => ['start' => ['line' => 0, 'character' => 0], 'end' => ['line' => 0, 'character' => 0]]],

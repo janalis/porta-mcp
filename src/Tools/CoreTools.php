@@ -91,7 +91,7 @@ final readonly class CoreTools
         );
         $this->api->registerTool(
             'diagnostics',
-            'Errors and warnings the language servers and analysers reported for the open files — or one of them — with 1-based positions. Files that are not open have none here.',
+            'Errors and warnings the language servers and analysers reported for the open files — or one of them — with 1-based positions; endColumn, when the finding ends on its line, is its last column. Files that are not open have none here.',
             ['type' => 'object', 'properties' => ['path' => $path('An open file')]],
             $this->diagnostics(...),
             effect: ToolEffect::Reads,
@@ -246,12 +246,18 @@ final readonly class CoreTools
     {
         $rows = [];
         foreach ($this->api->codeIntelligence()->diagnostics($this->arguments($arguments)->path()) as $diagnostic) {
-            $rows[] = [
+            $row = [
                 ...$diagnostic,
                 'line' => $diagnostic['line'] + 1,
                 'column' => $diagnostic['column'] + 1,
                 'severity' => self::SEVERITIES[$diagnostic['severity']] ?? 'hint',
             ];
+            if (\array_key_exists('endColumn', $diagnostic)) {
+                // The 0-based end, exclusive, is the 1-based last column; a
+                // finding with no width is the one column it starts on.
+                $row['endColumn'] = \max($diagnostic['endColumn'], $row['column']);
+            }
+            $rows[] = $row;
         }
 
         return $rows;

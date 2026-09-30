@@ -151,14 +151,15 @@ final class McpE2eTest extends TestCase
                     [2 => [['severity' => DiagnosticSeverity::Error, 'message' => 'Undefined', 'col' => 5, 'endCol' => 8, 'code' => 42, 'source' => 'phpstan']]],
                     'phpstan',
                 );
-                $buffers->applyDiagnostics(Uri::fromPath($b), [0 => [['severity' => DiagnosticSeverity::Hint, 'message' => 'Unused', 'col' => 0, 'endCol' => 1]]], 'lsp');
+                $buffers->applyDiagnostics(Uri::fromPath($b), [0 => [['severity' => DiagnosticSeverity::Hint, 'message' => 'Unused', 'col' => 0, 'endCol' => 0]]], 'lsp');
 
                 $this->assertSame(
                     [
-                        ['path' => $a, 'line' => 3, 'column' => 6, 'severity' => 'error', 'message' => 'Undefined', 'source' => 'phpstan', 'code' => '42'],
-                        ['path' => $b, 'line' => 1, 'column' => 1, 'severity' => 'hint', 'message' => 'Unused'],
+                        ['path' => $a, 'line' => 3, 'column' => 6, 'endColumn' => 8, 'severity' => 'error', 'message' => 'Undefined', 'source' => 'phpstan', 'code' => '42'],
+                        ['path' => $b, 'line' => 1, 'column' => 1, 'endColumn' => 1, 'severity' => 'hint', 'message' => 'Unused'],
                     ],
                     $this->json('diagnostics'),
+                    'a finding with no width ends on the column it starts on',
                 );
                 $this->assertCount(1, $this->json('diagnostics', ['path' => 'src/B.php']));
 
