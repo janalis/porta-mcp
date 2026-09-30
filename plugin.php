@@ -154,7 +154,14 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
         $root = false === $resolved ? $api->projectRoot() : $resolved;
         $feed = new SelectionFeed($api);
         $api->registerListTool(DiffReview::LIST, 'Claude\'s Proposed Change');
-        $diffs = new DiffReview($api, $presence);
+        $api->registerSetting(
+            'claudeSideBySide',
+            'Show Claude\'s proposed changes side by side',
+            'bool',
+            true,
+            hint: 'in the git view, beside the file as it is — Esc closes it; the git plugin has to be on',
+        );
+        $diffs = new DiffReview($api, $presence, static fn (): bool => true === $api->setting('claudeSideBySide'));
         $ideCatalog = new ToolCatalog(new IdeTools($api, $feed, $root, $diffs, $presence)->rows(...), $this->name(), static fn (): array => []);
         $ideServer = new IdeServer(
             new LockFile(LockFile::directory()),

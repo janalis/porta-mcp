@@ -9,6 +9,7 @@ use Porta\Config\CommandRegistry;
 use Porta\Editor\BufferManager;
 use Porta\Editor\BufferService;
 use Porta\Editor\DiagnosticSeverity;
+use Porta\Event\ChangeProposed;
 use Porta\Ide;
 use Porta\Lsp\Uri;
 use Porta\McpPlugin\Ide\WebSocketFrames;
@@ -24,6 +25,7 @@ use Porta\Tests\Support\Toasts;
 use Porta\Tests\Support\UsesBundledPlugins;
 use Porta\Ui\Glyphs;
 use Porta\Widget\CodeEditorWidget;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\Tui\Terminal\VirtualTerminal;
 use Symfony\Component\Tui\Tui;
 
@@ -309,6 +311,10 @@ final class McpClaudeCodeE2eTest extends TestCase
             100 => function (Tui $tui, VirtualTerminal $terminal, Ide $ide) use ($root, $a): void {
                 $this->connectCli($this->config->dir);
                 $buffers = Services::resolve($ide, BufferManager::class);
+                $offered = [];
+                Services::resolve($ide, EventDispatcherInterface::class)->addListener(ChangeProposed::class, static function (ChangeProposed $proposal) use (&$offered): void {
+                    $offered[] = [$proposal->path, $proposal->proposedPath, (string) \file_get_contents($proposal->proposedPath)];
+                });
                 $this->assertSame(['new_file_path is required', true], $this->cliCall('openDiff'));
                 $this->assertSame(['new_file_contents is required', true], $this->cliCall('openDiff', ['new_file_path' => $a]));
                 $this->assertTrue(
@@ -339,6 +345,8 @@ final class McpClaudeCodeE2eTest extends TestCase
                     Services::resolve($ide, CodeEditorWidget::class)->decorations->remoteCaretsIn($a),
                     'Claude Code shows at its change, as any agent does',
                 );
+                $this->assertSame([$root.'/src/B.php', $a], \array_column($offered, 0), 'each proposal offered side by side: the file as it is…');
+                $this->assertSame(['A.php', "<?php\n// one\n// TWO\n// three\n"], [\basename($offered[1][1]), $offered[1][2]], '…and a copy of the proposal, under its name');
                 $this->awaitPainted($tui, $terminal, '- // two');
                 $this->awaitPainted($tui, $terminal, '+ // TWO');
                 $this->assertStringContainsString('// one', \implode("\n", $this->screenGrid($tui, $terminal)), 'with the line before it');
@@ -346,6 +354,8 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $tui->handleInput("\r"); // Accept — the first choice
                 $this->assertSame(['FILE_SAVED', "<?php\n// one\n!// TWO\n// three\n"], $this->verdict($id));
                 $this->assertSame("<?php\n// one\n!// TWO\n// three\n", \file_get_contents($a), 'saved');
+                $this->assertFileDoesNotExist($offered[1][1], 'the copy goes with the verdict');
+                $this->assertDirectoryDoesNotExist(\dirname($offered[1][1]));
 
                 // Rejected: the old text back.
                 $id = $this->propose($tui, $terminal, $a, "<?php\n", 'A.php (cut)');
@@ -398,6 +408,18 @@ final class McpClaudeCodeE2eTest extends TestCase
                 )));
                 $this->assertSame(['DIFF_REJECTED', 'dirty'], $this->verdict(99));
                 $this->assertContains('Claude proposed a change to A.php, which has unsaved edits here — save or discard them, then ask again', Toasts::all($ide));
+
+                // Side by side turned off: the file and the dock alone.
+                $lifecycle = Services::resolve($ide, PluginLifecycle::class);
+                $settings = Probe::get(Probe::get($lifecycle, 'plugins'), 'settings');
+                $this->assertInstanceOf(PluginSettings::class, $settings);
+                $settings->change('mcp', 'claudeSideBySide', false);
+                $before = \count($offered);
+                $id = $this->propose($tui, $terminal, $root.'/src/B.php', "<?php\n// quiet\n", 'B.php (quiet)');
+                $tui->handleInput("\x1b[B");
+                $tui->handleInput("\r");
+                $this->assertSame(['DIFF_REJECTED', 'B.php (quiet)'], $this->verdict($id));
+                $this->assertCount($before, $offered, 'nothing offered side by side');
 
                 // The client going takes its pending proposal with it.
                 $buffers->get($a)?->document->undo();

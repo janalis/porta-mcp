@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Porta\McpPlugin\Ide;
 
+use Porta\Event\ChangeProposed;
 use Porta\McpPlugin\Server\TextBlocks;
 use Porta\McpPlugin\Tools\Presence;
 use Porta\Overlay\State\ToastSeverity;
@@ -40,12 +41,14 @@ final class DiffReview
     /** Unchanged lines shown before and after the change, for where it is. */
     private const int CONTEXT = 2;
 
-    /** @var array<string, array{path: string, original: string, created: bool, suspension: Suspension<TextBlocks>}> tab name => the proposal waiting for the user */
+    /** @var array<string, array{path: string, original: string, created: bool, copy: string|null, suspension: Suspension<TextBlocks>}> tab name => the proposal waiting for the user */
     private array $pending = [];
 
+    /** @param \Closure(): bool $sideBySide whether to offer the proposal to a side-by-side view too, read per proposal */
     public function __construct(
         private readonly PluginApi $api,
         private readonly Presence $presence,
+        private readonly \Closure $sideBySide,
     ) {}
 
     /**
@@ -91,7 +94,7 @@ final class DiffReview
         $this->presence->editing($caller, $path, $first);
         /** @var Suspension<TextBlocks> $suspension */
         $suspension = EventLoop::getSuspension();
-        $this->pending[$tab] = ['path' => $path, 'original' => $original, 'created' => $created, 'suspension' => $suspension];
+        $this->pending[$tab] = ['path' => $path, 'original' => $original, 'created' => $created, 'copy' => $this->offer($path, $proposed), 'suspension' => $suspension];
         $this->ask($tab);
 
         return $suspension->suspend();
@@ -130,6 +133,10 @@ final class DiffReview
         }
         unset($this->pending[$tab]);
         $this->api->updateList(self::LIST, []);
+        if (null !== $proposal['copy']) {
+            \unlink($proposal['copy']);
+            \rmdir(\dirname($proposal['copy']));
+        }
         $buffers = $this->api->openBuffers();
         $path = $proposal['path'];
         if ($accept) {
@@ -156,6 +163,26 @@ final class DiffReview
             ],
             fn (string $choice) => $this->decide($tab, 'accept' === $choice),
         );
+    }
+
+    /**
+     * Hand the proposal to whatever shows two texts side by side
+     * ({@see ChangeProposed}): a copy under the file's own name, in a folder
+     * of its own, so the comparison is titled with it. The copy, or null
+     * when side by side is off.
+     */
+    private function offer(string $path, string $proposed): ?string
+    {
+        if (!($this->sideBySide)()) {
+            return null;
+        }
+        $folder = \sys_get_temp_dir().'/porta-proposal-'.\bin2hex(\random_bytes(6));
+        \mkdir($folder, permissions: 0o700);
+        $copy = $folder.'/'.\basename($path);
+        \file_put_contents($copy, $proposed);
+        $this->api->emit(new ChangeProposed($path, $copy));
+
+        return $copy;
     }
 
     /**
