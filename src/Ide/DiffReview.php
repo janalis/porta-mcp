@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Porta\McpPlugin\Ide;
 
 use Porta\McpPlugin\Server\TextBlocks;
+use Porta\McpPlugin\Tools\Presence;
 use Porta\Overlay\State\ToastSeverity;
 use Porta\Plugin\Api\PluginApi;
+use Porta\Plugin\Api\ToolCaller;
 use Revolt\EventLoop;
 use Revolt\EventLoop\Suspension;
 
@@ -26,6 +28,9 @@ use Revolt\EventLoop\Suspension;
  * work. The question can be dismissed; {@see review()} asks it again. A
  * new proposal under a pending one's tab, the client going, and
  * `closeAllDiffTabs` each reject what is pending.
+ *
+ * The proposal is an agent's edit like any other: {@see Presence} keeps the
+ * file as it was for local history and shows the agent at the change.
  */
 final class DiffReview
 {
@@ -34,6 +39,7 @@ final class DiffReview
 
     public function __construct(
         private readonly PluginApi $api,
+        private readonly Presence $presence,
     ) {}
 
     /**
@@ -42,7 +48,7 @@ final class DiffReview
      *
      * @param array<string, mixed> $arguments
      */
-    public function open(array $arguments): TextBlocks
+    public function open(array $arguments, ToolCaller $caller): TextBlocks
     {
         $path = self::string($arguments, 'new_file_path') ?? self::string($arguments, 'old_file_path') ?? throw new \InvalidArgumentException('new_file_path is required');
         $proposed = self::string($arguments, 'new_file_contents') ?? throw new \InvalidArgumentException('new_file_contents is required');
@@ -70,8 +76,12 @@ final class DiffReview
         }
         $this->api->openFile($path);
         $original = (string) $buffers->text($path);
+        // Seen as any agent's edit is: the file as it was, kept for recovery;
+        // the agent's caret and mark where it changes the text.
+        $this->presence->before($caller, $path, $original);
         $first = $this->replace($path, $original, $proposed);
         $this->api->jumpTo($first);
+        $this->presence->editing($caller, $path, $first);
         /** @var Suspension<TextBlocks> $suspension */
         $suspension = EventLoop::getSuspension();
         $this->pending[$tab] = ['path' => $path, 'original' => $original, 'created' => $created, 'suspension' => $suspension];

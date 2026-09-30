@@ -6,7 +6,9 @@ namespace Porta\McpPlugin\Ide;
 
 use Porta\Lsp\Uri;
 use Porta\McpPlugin\Server\TextBlocks;
+use Porta\McpPlugin\Tools\Presence;
 use Porta\Plugin\Api\PluginApi;
+use Porta\Plugin\Api\ToolCaller;
 use Porta\Plugin\Api\ToolEffect;
 
 /**
@@ -34,9 +36,10 @@ final readonly class IdeTools
         private SelectionFeed $selection,
         private string $root,
         private DiffReview $diffs,
+        private Presence $presence,
     ) {}
 
-    /** @return list<array{plugin: string, id: string, description: string, inputSchema: array<string, mixed>, handler: \Closure(array<string, mixed>): (string|array<array-key, mixed>|TextBlocks), effect: ToolEffect}> */
+    /** @return list<array{plugin: string, id: string, description: string, inputSchema: array<string, mixed>, handler: \Closure(array<string, mixed>, ToolCaller=): (string|array<array-key, mixed>|TextBlocks), effect: ToolEffect}> */
     public function rows(): array
     {
         $file = ['type' => 'object', 'properties' => ['filePath' => ['type' => 'string']], 'required' => ['filePath']];
@@ -109,9 +112,9 @@ final readonly class IdeTools
 
     /**
      * @param array<string, mixed>                                               $schema
-     * @param \Closure(array<string, mixed>): (string|array<array-key, mixed>|TextBlocks) $handler
+     * @param \Closure(array<string, mixed>, ToolCaller=): (string|array<array-key, mixed>|TextBlocks) $handler
      *
-     * @return array{plugin: string, id: string, description: string, inputSchema: array<string, mixed>, handler: \Closure(array<string, mixed>): (string|array<array-key, mixed>|TextBlocks), effect: ToolEffect}
+     * @return array{plugin: string, id: string, description: string, inputSchema: array<string, mixed>, handler: \Closure(array<string, mixed>, ToolCaller=): (string|array<array-key, mixed>|TextBlocks), effect: ToolEffect}
      */
     private function row(string $id, string $description, array $schema, \Closure $handler, ToolEffect $effect): array
     {
@@ -129,7 +132,7 @@ final readonly class IdeTools
     }
 
     /** @param array<string, mixed> $arguments */
-    private function openFile(array $arguments): string
+    private function openFile(array $arguments, ToolCaller $caller): string
     {
         $path = self::path($arguments['filePath'] ?? null);
         if (!\is_file($path)) {
@@ -139,9 +142,11 @@ final readonly class IdeTools
         $start = \is_string($arguments['startText'] ?? null) ? $arguments['startText'] : '';
         $text = '' === $start ? null : $this->api->openBuffers()->text($path);
         $at = null === $text ? false : \strpos($text, $start);
-        if (false !== $at && null !== $text) {
-            $this->api->jumpTo(\substr_count($text, needle: "\n", offset: 0, length: $at));
+        $line = false === $at || null === $text ? 0 : \substr_count($text, needle: "\n", offset: 0, length: $at);
+        if ($line > 0) {
+            $this->api->jumpTo($line);
         }
+        $this->presence->reading($caller, $path, $line);
 
         return 'Opened file: '.$path;
     }

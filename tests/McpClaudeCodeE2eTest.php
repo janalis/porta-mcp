@@ -22,6 +22,8 @@ use Porta\Tests\Support\Services;
 use Porta\Tests\Support\TempProject;
 use Porta\Tests\Support\Toasts;
 use Porta\Tests\Support\UsesBundledPlugins;
+use Porta\Ui\Glyphs;
+use Porta\Widget\CodeEditorWidget;
 use Symfony\Component\Tui\Terminal\VirtualTerminal;
 use Symfony\Component\Tui\Tui;
 
@@ -331,6 +333,11 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $this->assertSame($a, $buffers->active()?->path, 'brought forward to be read');
                 $this->assertSame("<?php\n// one\n// TWO\n// three\n", $buffers->get($a)?->document->getText());
                 $this->assertSame(2, $buffers->get($a)?->document->cursorLine, 'the caret on the change');
+                $this->assertSame(
+                    [2 => [['col' => 0, 'label' => Glyphs::AGENT.' Claude Code', 'slot' => 0]]],
+                    Services::resolve($ide, CodeEditorWidget::class)->decorations->remoteCaretsIn($a),
+                    'Claude Code shows at its change, as any agent does',
+                );
                 $buffers->get($a)?->document->insert('!');
                 $tui->handleInput("\r"); // Accept — the first choice
                 $this->assertSame(['FILE_SAVED', "<?php\n// one\n!// TWO\n// three\n"], $this->verdict($id));
@@ -394,6 +401,8 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $this->assertIsResource($this->cli);
                 \fclose($this->cli);
                 $this->await(static fn (): bool => "<?php\n" === $buffers->get($root.'/src/B.php')?->document->getText(), what: 'the proposal withdrawn');
+                $editor = Services::resolve($ide, CodeEditorWidget::class);
+                $this->await(static fn (): bool => [] === $editor->decorations->remoteCaretsIn($a), what: 'its marks gone with it');
             },
         ]);
     }

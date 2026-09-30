@@ -25,6 +25,7 @@ use Porta\Overlay\State\ToastSeverity;
 use Porta\Plugin\Api\AbstractPlugin;
 use Porta\Plugin\Api\DisposablePlugin;
 use Porta\Plugin\Api\PluginApi;
+use Porta\Plugin\Api\ToolCaller;
 use Porta\Support\DiagnosticLog;
 
 /**
@@ -152,13 +153,20 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
         $resolved = \realpath($api->projectRoot());
         $root = false === $resolved ? $api->projectRoot() : $resolved;
         $feed = new SelectionFeed($api);
-        $diffs = new DiffReview($api);
-        $ideCatalog = new ToolCatalog(new IdeTools($api, $feed, $root, $diffs)->rows(...), $this->name(), static fn (): array => []);
+        $diffs = new DiffReview($api, $presence);
+        $ideCatalog = new ToolCatalog(new IdeTools($api, $feed, $root, $diffs, $presence)->rows(...), $this->name(), static fn (): array => []);
         $ideServer = new IdeServer(
             new LockFile(LockFile::directory()),
             [$root],
-            // A client that goes leaves no proposal waiting on the user.
-            static fn (Closure $send, string $connection): Session => new Session($send, $ideCatalog, Ide::VERSION, $connection, onClose: $diffs->rejectAll(...)),
+            // A client that goes leaves no proposal waiting on the user, and
+            // no mark of it on screen.
+            static fn (Closure $send, string $connection): Session => new Session($send, $ideCatalog, Ide::VERSION, $connection, onClose: static function (ToolCaller $caller) use (
+                $diffs,
+                $presence,
+            ): void {
+                $diffs->rejectAll();
+                $presence->left($caller);
+            }),
             $log->append(...),
         );
         $claude = new ClaudeCodeLink($ideServer, $feed);
