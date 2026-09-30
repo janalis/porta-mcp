@@ -127,14 +127,14 @@ final class McpE2eTest extends TestCase
                 $this->assertSame("<?php\necho 'a';\n", $this->ok('read_buffer'), 'one undo put it all back');
 
                 $this->ok('replace_buffer', ['path' => 'src/B.php', 'text' => "<?php\n// b\n"]);
-                $this->assertSame($b, $this->json('context')['activeFile'], 'replacing another file brought it forward');
+                $this->assertSame($a, $this->json('context')['activeFile'], 'replacing another file leaves the user\'s tab in front');
                 $this->assertSame("<?php\n// b\n", $this->ok('read_buffer', ['path' => $b]));
                 $this->ok('replace_buffer', ['path' => 'src/B.php', 'text' => "<?php\n// b2\n"]);
-                $this->assertSame("<?php\n// b2\n", $this->ok('read_buffer'), 'the active file by path');
+                $this->assertSame("<?php\n// b2\n", $this->ok('read_buffer', ['path' => 'src/B.php']), 'an open file behind, by path');
                 $this->ok('replace_buffer', ['path' => 'src/C.php', 'text' => "<?php\n// c\n"]);
                 $this->assertSame("<?php\n// c\n", $this->ok('read_buffer', ['path' => 'src/C.php']), 'a closed file is opened first');
                 $this->refused('replace_buffer', ['path' => 'src/D.php', 'text' => 'x'], 'is not a file');
-                $this->refused('replace_buffer', ['path' => 'img.png', 'text' => 'x'], 'the active tab is not one');
+                $this->refused('replace_buffer', ['path' => 'img.png', 'text' => 'x'], 'img.png is not one');
                 $this->refused('replace_buffer', [], 'text is required');
 
                 $this->ok('open_file', ['path' => 'src/A.php', 'line' => 1, 'column' => 1]);
@@ -204,7 +204,8 @@ final class McpE2eTest extends TestCase
                 $this->refused('edit_buffer', ['oldText' => '', 'newText' => 'x'], 'oldText is empty');
                 $this->refused('edit_buffer', ['oldText' => 'x'], 'newText is required');
                 $this->ok('edit_buffer', ['path' => 'src/B.php', 'oldText' => "'b'", 'newText' => "'b3'"]);
-                $this->assertSame("<?php\necho 'b3';\n", $this->ok('read_buffer'), 'a closed file, opened and brought forward');
+                $this->assertSame("<?php\necho 'b3';\n", $this->ok('read_buffer', ['path' => 'src/B.php']), 'a closed file, opened behind');
+                $this->assertSame($a, $this->json('context')['activeFile'], 'the user\'s tab stays in front');
             },
             200 => function (Tui $tui, $terminal, Ide $ide): void {
                 // What the user selected.
@@ -324,7 +325,8 @@ final class McpE2eTest extends TestCase
                 $tui->handleInput("\x1a"); // ctrl+z
                 $this->assertSame("<?php\nnew A();\n", $this->ok('read_buffer'));
                 $this->assertSame($a.' is already formatted', $this->ok('format', ['path' => 'src/A.php']), 'a closed file is opened first');
-                $this->assertSame($a, $this->json('context')['activeFile']);
+                $this->assertSame($b, $this->json('context')['activeFile'], 'opened behind the user\'s tab');
+                $this->assertContains($a, \array_column($this->json('context')['openFiles'], 'path'));
                 $this->refused('format', ['path' => 'src/D.php'], 'is not a file');
                 $this->refused('format', ['path' => 'README.md'], 'No language server is configured for README.md');
             },

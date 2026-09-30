@@ -36,7 +36,7 @@ final class SocketServer
     private array $connections = [];
 
     /**
-     * @param \Closure(\Closure(array<string, mixed>): void): Session $sessions builds the session for a new client, given how to send to it
+     * @param \Closure(\Closure(array<string, mixed>): void, string): Session $sessions builds the session for a new client, given how to send to it and its connection id
      * @param \Closure(string): void                                     $log      a connection that failed, in a sentence
      */
     public function __construct(
@@ -153,7 +153,7 @@ final class SocketServer
         });
         $session = ($this->sessions)(static function (array $message) use ($writer): void {
             $writer->write(\json_encode($message, \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_SLASHES | \JSON_INVALID_UTF8_SUBSTITUTE)."\n");
-        });
+        }, 'mcp-'.$id);
         $framer = new LineFramer($this->log);
         $watcher = EventLoop::unreference(EventLoop::onReadable($stream, function () use ($id, $stream, $framer, $session): void {
             $bytes = \fread($stream, length: 65_536);
@@ -180,5 +180,6 @@ final class SocketServer
         EventLoop::cancel($connection['watcher']);
         $connection['writer']->close();
         \fclose($connection['stream']);
+        $connection['session']->close();
     }
 }

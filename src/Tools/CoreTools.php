@@ -37,6 +37,7 @@ final readonly class CoreTools
 
     public function __construct(
         private PluginApi $api,
+        private Opener $opener,
     ) {}
 
     public function register(): void
@@ -109,7 +110,7 @@ final readonly class CoreTools
         );
         $this->api->registerTool(
             'edit_buffer',
-            'Replace one exact piece of a file\'s text in the editor (opening it first if needed) as ONE undoable edit: oldText must occur exactly once in the text as read_buffer shows it — include enough of the lines around it. Not saved to disk: the user reviews it and saves.',
+            'Replace one exact piece of a file\'s text in the editor (opening it behind the user\'s tab if needed) as ONE undoable edit: oldText must occur exactly once in the text as read_buffer shows it — include enough of the lines around it. Not saved to disk: the user reviews it and saves.',
             [
                 'type' => 'object',
                 'properties' => [
@@ -124,7 +125,7 @@ final readonly class CoreTools
         );
         $this->api->registerTool(
             'replace_buffer',
-            'Replace the whole text of a file in the editor (opening it first if needed) as ONE undoable edit. Not saved to disk: the user reviews it and saves.',
+            'Replace the whole text of a file in the editor (opening it behind the user\'s tab if needed) as ONE undoable edit. Not saved to disk: the user reviews it and saves.',
             [
                 'type' => 'object',
                 'properties' => ['path' => $path('The file; the active one when omitted'), 'text' => ['type' => 'string']],
@@ -272,10 +273,12 @@ final readonly class CoreTools
     private function replaceBuffer(array $arguments): string
     {
         $text = $this->arguments($arguments)->text('text');
-        $this->editable($this->arguments($arguments)->path());
-        $this->api->replaceDocument($text);
+        $target = $this->opener->open($this->arguments($arguments)->path());
+        $old = (string) $this->api->openBuffers()->text($target);
+        [$endLine, $endColumn] = self::lineAndColumn($old, \strlen($old));
+        $this->change($target, 0, 0, $endLine, $endColumn, $text);
 
-        return \sprintf('Replaced the text of %s — unsaved; the user can undo it in one step', $this->api->activeFile() ?? '');
+        return \sprintf('Replaced the text of %s — unsaved; the user can undo it in one step', $target);
     }
 
     /** @param array<string, mixed> $arguments */
@@ -287,7 +290,7 @@ final readonly class CoreTools
         if ('' === $old) {
             throw new \InvalidArgumentException('oldText is empty — say what to replace, or use replace_buffer for the whole text');
         }
-        $path = $this->editable($read->path());
+        $path = $this->opener->open($read->path());
         $text = (string) $this->api->openBuffers()->text($path);
         $at = \strpos($text, $old);
         if (false === $at) {
@@ -299,7 +302,15 @@ final readonly class CoreTools
         }
         [$line, $column] = self::lineAndColumn($text, $at);
         [$endLine, $endColumn] = self::lineAndColumn($text, $at + \strlen($old));
-        $why = $this->api->openBuffers()->edit($path, $line, $column, $endLine, $endColumn, $new);
+        $this->change($path, $line, $column, $endLine, $endColumn, $new);
+
+        return \sprintf('Edited %s at line %d — unsaved; the user can undo it in one step', $path, $line + 1);
+    }
+
+    /** Replace a range of an open buffer, as one undo step. */
+    private function change(string $path, int $line, int $column, int $endLine, int $endColumn, string $text): void
+    {
+        $why = $this->api->openBuffers()->edit($path, $line, $column, $endLine, $endColumn, $text);
         if (null !== $why) {
             // The range comes from the text just read, in the same fiber, so
             // it is a range of it; a refusal would still be the caller's to
@@ -309,28 +320,6 @@ final readonly class CoreTools
 
             // @codeCoverageIgnoreEnd
         }
-
-        return \sprintf('Edited %s at line %d — unsaved; the user can undo it in one step', $path, $line + 1);
-    }
-
-    /**
-     * The file to change, open and in front: $path, opened if it is not, or
-     * the active file when null.
-     */
-    private function editable(?string $path): string
-    {
-        if (null !== $path && $path !== $this->api->activeFile()) {
-            if (null === $this->api->openBuffers()->text($path) && !\is_file($path)) {
-                throw new \InvalidArgumentException(\sprintf('%s is not a file', $path));
-            }
-            $this->api->openFile($path);
-        }
-        $target = $this->api->activeFile();
-        if (null === $target || null === $this->api->openBuffers()->text($target) || null !== $path && $path !== $target) {
-            throw new \RuntimeException('No text file to edit — the active tab is not one');
-        }
-
-        return $target;
     }
 
     /** @return array{int, int} the 0-based line and byte column of a byte offset */

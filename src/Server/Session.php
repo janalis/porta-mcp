@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Porta\McpPlugin\Server;
 
+use Porta\Plugin\Api\ToolCaller;
 use Revolt\EventLoop;
 
 /**
@@ -42,8 +43,14 @@ final class Session
     /** The first version whose results carry `structuredContent` beside the text. */
     public const string STRUCTURED_SINCE = '2025-06-18';
 
+    /** What a client that gives no `clientInfo` is called. */
+    public const string UNNAMED = 'Agent';
+
     /** Seconds between two progress notifications for a call still running. */
     public const float HEARTBEAT = 2.0;
+
+    /** Who is calling, as the client named itself in `initialize`. */
+    private ToolCaller $caller;
 
     /** The version `initialize` settled on; '' before it, which is the oldest. */
     private string $protocol = '';
@@ -58,12 +65,34 @@ final class Session
      * @param \Closure(array<string, mixed>): void $send      puts one message on the wire
      * @param float                                $heartbeat seconds between two progress notifications
      */
+    /**
+     * @param string                              $connection tells this client from the others for as long as the IDE runs
+     * @param (\Closure(ToolCaller): void)|null      $onClose    told when the client is gone
+     */
     public function __construct(
         private readonly \Closure $send,
         private readonly ToolCatalog $catalog,
         private readonly string $version,
+        string $connection = 'mcp',
         private readonly float $heartbeat = self::HEARTBEAT,
-    ) {}
+        private readonly ?\Closure $onClose = null,
+    ) {
+        $this->caller = new ToolCaller($connection, self::UNNAMED);
+    }
+
+    /** The client hung up, or the server stopped: whoever keeps track of it is told. */
+    public function close(): void
+    {
+        if (null !== $this->onClose) {
+            ($this->onClose)($this->caller);
+        }
+    }
+
+    /** Who this session's client is — its handlers' caller. */
+    public function caller(): ToolCaller
+    {
+        return $this->caller;
+    }
 
     /** One line off the wire. */
     public function receive(string $line): void
@@ -152,6 +181,9 @@ final class Session
     private function initialize(array $params): array
     {
         $asked = \is_string($params['protocolVersion'] ?? null) ? $params['protocolVersion'] : '';
+        $client = \is_array($params['clientInfo'] ?? null) ? $params['clientInfo'] : [];
+        $names = \array_filter([$client['title'] ?? null, $client['name'] ?? null], static fn (mixed $name): bool => \is_string($name) && '' !== \trim($name));
+        $this->caller = new ToolCaller($this->caller->id, \trim((string) (\array_first($names) ?? self::UNNAMED)));
         $this->protocol = \in_array($asked, self::PROTOCOL_VERSIONS, strict: true) ? $asked : self::PROTOCOL_VERSIONS[0];
 
         return [
@@ -202,7 +234,7 @@ final class Session
      * the value itself — which must be an object, so a list travels as
      * `{"items": [...]}`.
      *
-     * @param \Closure(array<string, mixed>): (string|array<array-key, mixed>) $handler
+     * @param \Closure(array<string, mixed>, ToolCaller=): (string|array<array-key, mixed>) $handler
      * @param array<string, mixed>                                              $arguments
      *
      * @return array<string, mixed>
@@ -210,7 +242,7 @@ final class Session
     private function answer(\Closure $handler, array $arguments): array
     {
         try {
-            $answer = $handler($arguments);
+            $answer = $handler($arguments, $this->caller);
             $text = \is_string($answer)
                 ? $answer
                 : \json_encode($answer, \JSON_THROW_ON_ERROR | \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE | \JSON_INVALID_UTF8_SUBSTITUTE);

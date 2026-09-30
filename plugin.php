@@ -10,6 +10,7 @@ use Porta\McpPlugin\Server\SocketServer;
 use Porta\McpPlugin\Server\ToolCatalog;
 use Porta\McpPlugin\Tools\CodeTools;
 use Porta\McpPlugin\Tools\CoreTools;
+use Porta\McpPlugin\Tools\Opener;
 use Porta\McpPlugin\Tools\RunTools;
 use Porta\McpPlugin\Tools\SearchTools;
 use Porta\Overlay\State\ToastSeverity;
@@ -46,7 +47,15 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
             false,
             hint: 'save_buffer writes an open file to disk as Ctrl+S does; a file changed on disk is never overwritten. With edits allowed too, rename rewrites files that are not open',
         );
-        new CoreTools($api)->register();
+        $api->registerSetting(
+            'followAgent',
+            'Bring the file an agent edits to the front',
+            'bool',
+            false,
+            hint: 'off, an agent edits in a tab behind yours and your caret stays put',
+        );
+        $opener = new Opener($api, static fn (): bool => true === $api->setting('followAgent'));
+        new CoreTools($api, $opener)->register();
         new SearchTools($api)->register();
         $api->registerSetting(
             'allowRuns',
@@ -66,7 +75,7 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
             min: 1,
             max: 300,
         );
-        new CodeTools($api, static fn (): int => (int) $api->setting('lspTimeout'))->register();
+        new CodeTools($api, static fn (): int => (int) $api->setting('lspTimeout'), $opener)->register();
 
         $catalog = new ToolCatalog(
             $api->tools(...),
@@ -82,7 +91,7 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
         $log = DiagnosticLog::forRoot($api->projectRoot(), 'mcp');
         $server = new SocketServer(
             new SocketPath($api->projectRoot()),
-            static fn (Closure $send): Session => new Session($send, $catalog, Ide::VERSION),
+            static fn (Closure $send, string $connection): Session => new Session($send, $catalog, Ide::VERSION, $connection),
             $log->append(...),
         );
         $this->server = $server;

@@ -7,6 +7,7 @@ namespace Porta\McpPlugin\Tests\Server;
 use PHPUnit\Framework\TestCase;
 use Porta\McpPlugin\Server\Session;
 use Porta\McpPlugin\Server\ToolCatalog;
+use Porta\Plugin\Api\ToolCaller;
 use Porta\Tests\Support\PumpsLoop;
 use Revolt\EventLoop;
 
@@ -22,6 +23,9 @@ final class SessionTest extends TestCase
     /** @var list<array<string, mixed>> */
     private array $sent = [];
 
+    /** @var list<ToolCaller> */
+    private array $closed = [];
+
     /** @param array<string, \Closure(array<string, mixed>): (string|array<array-key, mixed>)> $handlers by tool id, all of the mcp plugin */
     private function session(array $handlers = [], float $heartbeat = Session::HEARTBEAT): Session
     {
@@ -36,7 +40,11 @@ final class SessionTest extends TestCase
             },
             new ToolCatalog(static fn (): array => $tools, 'mcp', static fn (): array => []),
             '9.9.9',
+            'conn-1',
             $heartbeat,
+            function (ToolCaller $caller): void {
+                $this->closed[] = $caller;
+            },
         );
     }
 
@@ -82,6 +90,39 @@ final class SessionTest extends TestCase
         $answer = $this->last();
         $this->assertIsArray($answer['result']);
         $this->assertSame(Session::PROTOCOL_VERSIONS[0], $answer['result']['protocolVersion']);
+    }
+
+    public function testEveryCallKnowsWhichClientMadeIt(): void
+    {
+        $seen = [];
+        $session = $this->session(['who' => static function (array $arguments, ToolCaller $caller) use (&$seen): string {
+            $seen[] = [$caller->id, $caller->name];
+
+            return 'ok';
+        }]);
+        $call = self::line(['id' => 9, 'method' => 'tools/call', 'params' => ['name' => 'who']]);
+
+        $session->receive($call);
+        $session->receive(self::line(['id' => 1, 'method' => 'initialize', 'params' => ['clientInfo' => ['name' => 'claude-code', 'title' => 'Claude Code']]]));
+        $session->receive($call);
+        $session->receive(self::line(['id' => 2, 'method' => 'initialize', 'params' => ['clientInfo' => ['name' => 'codex', 'title' => ' ']]]));
+        $session->receive($call);
+        $session->receive(self::line(['id' => 3, 'method' => 'initialize', 'params' => ['clientInfo' => 'nonsense']]));
+        $session->receive($call);
+
+        $this->assertSame(
+            [
+                ['conn-1', Session::UNNAMED],
+                ['conn-1', 'Claude Code'],
+                ['conn-1', 'codex'],
+                ['conn-1', Session::UNNAMED],
+            ],
+            $seen,
+            'the title first, else the name, else a generic one — the connection throughout',
+        );
+        $this->assertSame([], $this->closed);
+        $session->close();
+        $this->assertSame([$session->caller()], $this->closed, 'its going is told once asked');
     }
 
     public function testPingAnswersAnEmptyObject(): void

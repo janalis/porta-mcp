@@ -49,6 +49,35 @@ final class McpWorkspaceE2eTest extends TestCase
         return \array_column($this->request('tools/list')['result']['tools'], 'name');
     }
 
+    public function testAnAgentsEditLeavesTheUsersTabAndCaretWhereTheyAreUnlessFollowed(): void
+    {
+        $project = self::project();
+        $a = (string) \realpath($project->path('src/A.php'));
+        $b = (string) \realpath($project->path('src/B.php'));
+        $this->runIde($project, $project->path('src/A.php'), [
+            100 => function (Tui $tui, $terminal, Ide $ide) use ($project, $a, $b): void {
+                $this->connect($project);
+                $this->ok('open_file', ['path' => 'src/A.php', 'line' => 3, 'column' => 3]);
+
+                $this->ok('edit_buffer', ['oldText' => '// needle one', 'newText' => "// one\n// two"]);
+                $this->assertSame(['line' => 4, 'column' => 3], $this->json('context')['caret'], 'a line inserted above: the caret moved down with its text');
+                $this->ok('edit_buffer', ['path' => 'src/B.php', 'oldText' => 'two', 'newText' => '2']);
+                $context = $this->json('context');
+                $this->assertSame($a, $context['activeFile'], 'the edited file waits behind');
+                $this->assertSame([['path' => $a, 'dirty' => true], ['path' => $b, 'dirty' => true]], $context['openFiles']);
+            },
+        ]);
+
+        $followed = self::project(['followAgent' => true]);
+        $this->runIde($followed, $followed->path('src/A.php'), [
+            100 => function (Tui $tui, $terminal, Ide $ide) use ($followed): void {
+                $this->connect($followed);
+                $this->ok('edit_buffer', ['path' => 'src/B.php', 'oldText' => 'two', 'newText' => '2']);
+                $this->assertSame((string) \realpath($followed->path('src/B.php')), $this->json('context')['activeFile'], 'followed: brought forward');
+            },
+        ]);
+    }
+
     public function testSearchFindsTextAcrossTheProjectLikeFindInFiles(): void
     {
         $project = self::project();

@@ -68,6 +68,7 @@ final readonly class CodeTools
     public function __construct(
         private PluginApi $api,
         private \Closure $timeout,
+        private Opener $opener,
     ) {}
 
     public function register(): void
@@ -129,7 +130,7 @@ final readonly class CodeTools
         );
         $this->api->registerTool(
             self::FORMAT,
-            'Format a file as its language server does, by the file\'s own indentation — opening it first if needed — as ONE undoable edit. Not saved to disk. Without a path, the active file.',
+            'Format a file as its language server does, by the file\'s own indentation — opening it behind the user\'s tab if needed — as ONE undoable edit. Not saved to disk. Without a path, the active file.',
             ['type' => 'object', 'properties' => ['path' => $at['properties']['path']]],
             $this->format(...),
             effect: ToolEffect::Edits,
@@ -241,13 +242,7 @@ final readonly class CodeTools
     /** @param array<string, mixed> $arguments */
     private function format(array $arguments): string
     {
-        $path = new Arguments($arguments, $this->api->projectRoot())->path() ?? $this->api->activeFile() ?? throw new \RuntimeException('No file is open');
-        if (null === $this->api->openBuffers()->text($path)) {
-            if (!\is_file($path)) {
-                throw new \InvalidArgumentException(\sprintf('%s is not a file', $path));
-            }
-            $this->api->openFile($path);
-        }
+        $path = $this->opener->open(new Arguments($arguments, $this->api->projectRoot())->path());
         /** @var array{0: int, 1: ?string} $answer */
         $answer = $this->wait(fn (\Closure $done) => $this->api->codeIntelligence()->format($path, static fn (int $applied, ?string $error) => $done([$applied, $error])));
         [$applied, $error] = $answer;
