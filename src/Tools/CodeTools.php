@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Porta\McpPlugin\Tools;
 
 use Porta\Plugin\Api\PluginApi;
+use Porta\Plugin\Api\ToolCaller;
 use Porta\Plugin\Api\ToolEffect;
 use Porta\Support\FiberWait;
 
@@ -69,6 +70,7 @@ final readonly class CodeTools
         private PluginApi $api,
         private \Closure $timeout,
         private Opener $opener,
+        private Presence $presence,
     ) {}
 
     public function register(): void
@@ -86,14 +88,14 @@ final readonly class CodeTools
             'definition',
             'Where the symbol at a position is declared, asked of the language server — any file of the project, open or not. Each location has its path, 1-based line and column, and the line\'s text.',
             $at,
-            fn (array $arguments): array => $this->locations($arguments, $this->api->codeIntelligence()->definition(...)),
+            fn (array $arguments, ToolCaller $caller): array => $this->locations($arguments, $this->api->codeIntelligence()->definition(...), $caller),
             effect: ToolEffect::Reads,
         );
         $this->api->registerTool(
             'references',
             'Every place the symbol at a position is used, its declaration included, asked of the language server — the precise answer a text search for its name is not.',
             $at,
-            fn (array $arguments): array => $this->locations($arguments, $this->api->codeIntelligence()->references(...)),
+            fn (array $arguments, ToolCaller $caller): array => $this->locations($arguments, $this->api->codeIntelligence()->references(...), $caller),
             effect: ToolEffect::Reads,
         );
         $this->api->registerTool(
@@ -143,9 +145,10 @@ final readonly class CodeTools
      *
      * @return list<array{path: string, line: int, column: int, text: string}>
      */
-    private function locations(array $arguments, \Closure $ask): array
+    private function locations(array $arguments, \Closure $ask, ToolCaller $caller): array
     {
         [$path, $line, $column] = $this->position($arguments);
+        $this->presence->reading($caller, $path, $line, $column);
         /** @var array{0: list<array{path: string, line: int, column: int, text: string}>, 1: ?string} $answer */
         $answer = $this->wait(static fn (\Closure $done) => $ask($path, $line, $column, static fn (array $rows, ?string $error) => $done([$rows, $error])));
         [$rows, $error] = $answer;
@@ -157,9 +160,10 @@ final readonly class CodeTools
     }
 
     /** @param array<string, mixed> $arguments */
-    private function hover(array $arguments): string
+    private function hover(array $arguments, ToolCaller $caller): string
     {
         [$path, $line, $column] = $this->position($arguments);
+        $this->presence->reading($caller, $path, $line, $column);
         /** @var array{0: ?string, 1: ?string} $answer */
         $answer = $this->wait(fn (\Closure $done) => $this->api->codeIntelligence()->hover($path, $line, $column, static fn (?string $text, ?string $error) => $done([$text, $error])));
         [$text, $error] = $answer;
@@ -198,9 +202,10 @@ final readonly class CodeTools
      *
      * @return list<array{name: string, kind: string, line: int, column: int, depth: int}>
      */
-    private function outline(array $arguments): array
+    private function outline(array $arguments, ToolCaller $caller): array
     {
         $path = new Arguments($arguments, $this->api->projectRoot())->requiredPath();
+        $this->presence->reading($caller, $path);
         /** @var array{0: list<array{name: string, kind: int, line: int, column: int, depth: int}>, 1: ?string} $answer */
         $answer = $this->wait(fn (\Closure $done) => $this->api->codeIntelligence()->outline($path, static fn (array $symbols, ?string $error) => $done([$symbols, $error])));
         [$symbols, $error] = $answer;
@@ -222,13 +227,14 @@ final readonly class CodeTools
      *
      * @return array{files: int, skipped: list<string>, note: string}
      */
-    private function rename(array $arguments): array
+    private function rename(array $arguments, ToolCaller $caller): array
     {
         [$path, $line, $column] = $this->position($arguments);
         $newName = new Arguments($arguments, $this->api->projectRoot())->text('newName');
         if ('' === \trim($newName)) {
             throw new \InvalidArgumentException('newName is required');
         }
+        $this->presence->editing($caller, $path, $line, $column);
         /** @var array{0: array{files: int, skipped: list<string>}|null, 1: ?string} $answer */
         $answer = $this->wait(fn (\Closure $done) => $this->api->codeIntelligence()->rename($path, $line, $column, $newName, static fn (?array $outcome, ?string $error) => $done([$outcome, $error])));
         [$outcome, $error] = $answer;
@@ -240,9 +246,10 @@ final readonly class CodeTools
     }
 
     /** @param array<string, mixed> $arguments */
-    private function format(array $arguments): string
+    private function format(array $arguments, ToolCaller $caller): string
     {
         $path = $this->opener->open(new Arguments($arguments, $this->api->projectRoot())->path());
+        $this->presence->editing($caller, $path);
         /** @var array{0: int, 1: ?string} $answer */
         $answer = $this->wait(fn (\Closure $done) => $this->api->codeIntelligence()->format($path, static fn (int $applied, ?string $error) => $done([$applied, $error])));
         [$applied, $error] = $answer;

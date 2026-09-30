@@ -6,6 +6,7 @@ namespace Porta\McpPlugin\Tools;
 
 use Porta\Overlay\State\ToastSeverity;
 use Porta\Plugin\Api\PluginApi;
+use Porta\Plugin\Api\ToolCaller;
 use Porta\Plugin\Api\ToolEffect;
 
 /**
@@ -38,6 +39,7 @@ final readonly class CoreTools
     public function __construct(
         private PluginApi $api,
         private Opener $opener,
+        private Presence $presence,
     ) {}
 
     public function register(): void
@@ -169,7 +171,7 @@ final readonly class CoreTools
     }
 
     /** @param array<string, mixed> $arguments */
-    private function readBuffer(array $arguments): string
+    private function readBuffer(array $arguments, ToolCaller $caller): string
     {
         $path = $this->arguments($arguments)->path() ?? $this->api->activeFile() ?? throw new \RuntimeException('No file is open');
         $text = $this->api->openBuffers()->text($path) ?? throw new \RuntimeException(\sprintf('%s is not open in the editor — open_file it first, or read it from disk', $path));
@@ -177,6 +179,7 @@ final readonly class CoreTools
         $numbered = $read->flag('lineNumbers');
         $start = $read->position('startLine');
         $end = $read->position('endLine');
+        $this->presence->reading($caller, $path, ($start ?? 1) - 1);
         if (null === $start && null === $end && !$numbered) {
             return $text;
         }
@@ -199,10 +202,13 @@ final readonly class CoreTools
      *
      * @return array{text: string, start: array{line: int, column: int}, end: array{line: int, column: int}}|string
      */
-    private function selection(array $arguments): array|string
+    private function selection(array $arguments, ToolCaller $caller): array|string
     {
         $active = $this->api->activeFile();
         $selection = null === $active ? null : $this->api->openBuffers()->selection($active);
+        if (null !== $active && null !== $selection) {
+            $this->presence->reading($caller, $active, $selection['line'], $selection['column']);
+        }
 
         return (
             null === $selection
@@ -270,19 +276,20 @@ final readonly class CoreTools
     }
 
     /** @param array<string, mixed> $arguments */
-    private function replaceBuffer(array $arguments): string
+    private function replaceBuffer(array $arguments, ToolCaller $caller): string
     {
         $text = $this->arguments($arguments)->text('text');
         $target = $this->opener->open($this->arguments($arguments)->path());
         $old = (string) $this->api->openBuffers()->text($target);
         [$endLine, $endColumn] = self::lineAndColumn($old, \strlen($old));
         $this->change($target, 0, 0, $endLine, $endColumn, $text);
+        $this->presence->editing($caller, $target);
 
         return \sprintf('Replaced the text of %s — unsaved; the user can undo it in one step', $target);
     }
 
     /** @param array<string, mixed> $arguments */
-    private function editBuffer(array $arguments): string
+    private function editBuffer(array $arguments, ToolCaller $caller): string
     {
         $read = $this->arguments($arguments);
         $old = $read->text('oldText');
@@ -303,6 +310,9 @@ final readonly class CoreTools
         [$line, $column] = self::lineAndColumn($text, $at);
         [$endLine, $endColumn] = self::lineAndColumn($text, $at + \strlen($old));
         $this->change($path, $line, $column, $endLine, $endColumn, $new);
+        // Where a typist who wrote it would have stopped: after the new text.
+        [$newLines, $lastColumn] = self::lineAndColumn($new, \strlen($new));
+        $this->presence->editing($caller, $path, $line + $newLines, 0 === $newLines ? $column + $lastColumn : $lastColumn);
 
         return \sprintf('Edited %s at line %d — unsaved; the user can undo it in one step', $path, $line + 1);
     }
@@ -344,7 +354,7 @@ final readonly class CoreTools
     }
 
     /** @param array<string, mixed> $arguments */
-    private function insertText(array $arguments): string
+    private function insertText(array $arguments, ToolCaller $caller): string
     {
         $text = $this->arguments($arguments)->text('text');
         $target = $this->api->activeFile();
@@ -352,6 +362,8 @@ final readonly class CoreTools
             throw new \RuntimeException('No text file is active to insert into');
         }
         $this->api->insertAtCaret($text);
+        $caret = $this->api->caretPosition() ?? ['line' => 0, 'column' => 0];
+        $this->presence->editing($caller, $target, $caret['line'], $caret['column']);
 
         return 'Inserted into '.$target.' — unsaved';
     }

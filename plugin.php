@@ -11,6 +11,7 @@ use Porta\McpPlugin\Server\ToolCatalog;
 use Porta\McpPlugin\Tools\CodeTools;
 use Porta\McpPlugin\Tools\CoreTools;
 use Porta\McpPlugin\Tools\Opener;
+use Porta\McpPlugin\Tools\Presence;
 use Porta\McpPlugin\Tools\RunTools;
 use Porta\McpPlugin\Tools\SearchTools;
 use Porta\Overlay\State\ToastSeverity;
@@ -54,8 +55,30 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
             false,
             hint: 'off, an agent edits in a tab behind yours and your caret stays put',
         );
+        $api->registerSetting(
+            'showAgents',
+            'Show agents at work',
+            'bool',
+            true,
+            hint: 'a ✦ in the agent\'s colour on the tab and tree row of each file it reads or edits, and who is doing what in the status bar',
+        );
+        $api->registerSetting(
+            'showAgentCursor',
+            'Show an agent\'s cursor in the editor',
+            'bool',
+            true,
+            hint: 'a caret in its colour, with its name at the end of the line, where it reads or edits',
+        );
+        $api->registerSetting('agentFade', 'Hide an agent after (seconds)', 'int', 10, hint: 'without it reading or editing the file', min: 2, max: 120);
+        $presence = new Presence(
+            $api,
+            static fn (): bool => true === $api->setting('showAgents'),
+            static fn (): bool => true === $api->setting('showAgentCursor'),
+            static fn (): float => (float) $api->setting('agentFade'),
+        );
+        $api->registerStatusSegment($presence->statusCell(...));
         $opener = new Opener($api, static fn (): bool => true === $api->setting('followAgent'));
-        new CoreTools($api, $opener)->register();
+        new CoreTools($api, $opener, $presence)->register();
         new SearchTools($api)->register();
         $api->registerSetting(
             'allowRuns',
@@ -75,7 +98,7 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
             min: 1,
             max: 300,
         );
-        new CodeTools($api, static fn (): int => (int) $api->setting('lspTimeout'), $opener)->register();
+        new CodeTools($api, static fn (): int => (int) $api->setting('lspTimeout'), $opener, $presence)->register();
 
         $catalog = new ToolCatalog(
             $api->tools(...),
@@ -91,7 +114,7 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
         $log = DiagnosticLog::forRoot($api->projectRoot(), 'mcp');
         $server = new SocketServer(
             new SocketPath($api->projectRoot()),
-            static fn (Closure $send, string $connection): Session => new Session($send, $catalog, Ide::VERSION, $connection),
+            static fn (Closure $send, string $connection): Session => new Session($send, $catalog, Ide::VERSION, $connection, onClose: $presence->left(...)),
             $log->append(...),
         );
         $this->server = $server;
@@ -104,6 +127,11 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
         });
         $api->on(ToolsChanged::class, $server->toolsChanged(...));
         $api->onSettingChanged($server->toolsChanged(...));
+        $api->onSettingChanged(static function (string $key) use ($presence): void {
+            if (\in_array($key, ['showAgents', 'showAgentCursor', 'agentFade'], strict: true)) {
+                $presence->reset();
+            }
+        });
         $api->onShutdown($this->deactivate(...));
     }
 

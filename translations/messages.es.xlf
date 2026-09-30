@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xliff xmlns="urn:oasis:names:tc:xliff:document:1.2" version="1.2">
+  <file source-language="en" target-language="es" datatype="plaintext" original="messages">
+    <body>
+      <trans-unit id="1">
+        <source>%agent% editing %file%</source>
+        <target>%agent% edita %file%</target>
+      </trans-unit>
+      <trans-unit id="2">
+        <source>%agent% reading %file%</source>
+        <target>%agent% lee %file%</target>
+      </trans-unit>
+      <trans-unit id="3">
+        <source>%count% agents</source>
+        <target>%count% agentes</target>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>
