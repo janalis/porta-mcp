@@ -6,6 +6,7 @@ namespace Porta\McpPlugin\Tools;
 
 use Porta\Overlay\State\ToastSeverity;
 use Porta\Plugin\Api\PluginApi;
+use Porta\Plugin\Api\ToolEffect;
 
 /**
  * The IDE itself as tools: what is open and where the caret is, the buffers'
@@ -46,12 +47,14 @@ final readonly class CoreTools
             'What the user has in front of them: the project root, the active file and caret, the files selected in the tree, and every open tab with whether it has unsaved edits.',
             self::NO_ARGUMENTS,
             $this->context(...),
+            effect: ToolEffect::Reads,
         );
         $this->api->registerTool(
             'read_buffer',
             'The text of a file OPEN in the editor, unsaved edits included — the disk copy may be older. Without a path, the active file.',
             ['type' => 'object', 'properties' => ['path' => $path('An open file')]],
             $this->readBuffer(...),
+            effect: ToolEffect::Reads,
         );
         $this->api->registerTool(
             'open_file',
@@ -66,12 +69,14 @@ final readonly class CoreTools
                 'required' => ['path'],
             ],
             $this->openFile(...),
+            effect: ToolEffect::Edits,
         );
         $this->api->registerTool(
             'diagnostics',
             'Errors and warnings the language servers and analysers reported for the open files — or one of them — with 1-based positions. Files that are not open have none here.',
             ['type' => 'object', 'properties' => ['path' => $path('An open file')]],
             $this->diagnostics(...),
+            effect: ToolEffect::Reads,
         );
         $this->api->registerTool(
             'notify',
@@ -85,6 +90,7 @@ final readonly class CoreTools
                 'required' => ['message'],
             ],
             $this->notify(...),
+            effect: ToolEffect::Edits,
         );
         $this->api->registerTool(
             'replace_buffer',
@@ -95,18 +101,21 @@ final readonly class CoreTools
                 'required' => ['text'],
             ],
             $this->replaceBuffer(...),
+            effect: ToolEffect::Edits,
         );
         $this->api->registerTool(
             'insert_text',
             'Insert text at the caret of the active file, as one undoable edit. Not saved to disk.',
             ['type' => 'object', 'properties' => ['text' => ['type' => 'string']], 'required' => ['text']],
             $this->insertText(...),
+            effect: ToolEffect::Edits,
         );
         $this->api->registerTool(
             self::SAVE,
             'Save an open file to disk, as the user\'s Ctrl+S does. A file that changed on disk since it was opened is refused, never overwritten — tell the user instead. Without a path, the active file.',
             ['type' => 'object', 'properties' => ['path' => $path('An open file')]],
             $this->saveBuffer(...),
+            effect: ToolEffect::Writes,
         );
     }
 

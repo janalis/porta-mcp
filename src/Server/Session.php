@@ -39,8 +39,14 @@ final class Session
     public const int METHOD_NOT_FOUND = -32_601;
     public const int INVALID_PARAMS = -32_602;
 
+    /** The first version whose results carry `structuredContent` beside the text. */
+    public const string STRUCTURED_SINCE = '2025-06-18';
+
     /** Seconds between two progress notifications for a call still running. */
     public const float HEARTBEAT = 2.0;
+
+    /** The version `initialize` settled on; '' before it, which is the oldest. */
+    private string $protocol = '';
 
     /** Until the client says `notifications/initialized`, nothing unsolicited is sent. */
     private bool $initialized = false;
@@ -146,9 +152,10 @@ final class Session
     private function initialize(array $params): array
     {
         $asked = \is_string($params['protocolVersion'] ?? null) ? $params['protocolVersion'] : '';
+        $this->protocol = \in_array($asked, self::PROTOCOL_VERSIONS, strict: true) ? $asked : self::PROTOCOL_VERSIONS[0];
 
         return [
-            'protocolVersion' => \in_array($asked, self::PROTOCOL_VERSIONS, strict: true) ? $asked : self::PROTOCOL_VERSIONS[0],
+            'protocolVersion' => $this->protocol,
             'capabilities' => ['tools' => ['listChanged' => true]],
             'serverInfo' => ['name' => 'porta', 'title' => 'Porta', 'version' => $this->version],
             'instructions' => self::INSTRUCTIONS,
@@ -176,18 +183,7 @@ final class Session
         $heartbeat = $this->heartbeat($params, $name);
         /** @var array<string, mixed> $arguments */
         $fiber = new \Fiber(function () use ($id, $key, $heartbeat, $handler, $arguments): void {
-            $failed = false;
-            try {
-                $answer = $handler($arguments);
-                $text = \is_string($answer)
-                    ? $answer
-                    : \json_encode($answer, \JSON_THROW_ON_ERROR | \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE | \JSON_INVALID_UTF8_SUBSTITUTE);
-            } catch (\Throwable $error) {
-                // The tool's failure is the CALLER's to read, not a protocol
-                // error: the model sees it and can correct its arguments.
-                $text = $error->getMessage();
-                $failed = true;
-            }
+            $result = $this->answer($handler, $arguments);
             if (null !== $heartbeat) {
                 EventLoop::cancel($heartbeat);
             }
@@ -195,9 +191,40 @@ final class Session
                 return; // cancelled: the client no longer wants an answer
             }
             unset($this->calls[$key]);
-            $this->result($id, ['content' => [['type' => 'text', 'text' => $text]], 'isError' => $failed]);
+            $this->result($id, $result);
         });
         $fiber->start();
+    }
+
+    /**
+     * What a handler's answer is on the wire. An array is JSON text for every
+     * client and, for one that speaks {@see STRUCTURED_SINCE} or later, also
+     * the value itself — which must be an object, so a list travels as
+     * `{"items": [...]}`.
+     *
+     * @param \Closure(array<string, mixed>): (string|array<array-key, mixed>) $handler
+     * @param array<string, mixed>                                              $arguments
+     *
+     * @return array<string, mixed>
+     */
+    private function answer(\Closure $handler, array $arguments): array
+    {
+        try {
+            $answer = $handler($arguments);
+            $text = \is_string($answer)
+                ? $answer
+                : \json_encode($answer, \JSON_THROW_ON_ERROR | \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE | \JSON_INVALID_UTF8_SUBSTITUTE);
+        } catch (\Throwable $error) {
+            // The tool's failure is the CALLER's to read, not a protocol
+            // error: the model sees it and can correct its arguments.
+            return ['content' => [['type' => 'text', 'text' => $error->getMessage()]], 'isError' => true];
+        }
+        $result = ['content' => [['type' => 'text', 'text' => $text]], 'isError' => false];
+        if (\is_array($answer) && $this->protocol >= self::STRUCTURED_SINCE) {
+            $result['structuredContent'] = \array_is_list($answer) ? ['items' => $answer] : $answer;
+        }
+
+        return $result;
     }
 
     /**

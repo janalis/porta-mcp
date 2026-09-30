@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Porta\McpPlugin\Tools;
 
 use Porta\Plugin\Api\PluginApi;
+use Porta\Plugin\Api\ToolEffect;
 use Porta\Support\FiberWait;
 
 /**
@@ -75,24 +76,28 @@ final readonly class CodeTools
             'Where the symbol at a position is declared, asked of the language server — any file of the project, open or not. Each location has its path, 1-based line and column, and the line\'s text.',
             $at,
             fn (array $arguments): array => $this->locations($arguments, $this->api->codeIntelligence()->definition(...)),
+            effect: ToolEffect::Reads,
         );
         $this->api->registerTool(
             'references',
             'Every place the symbol at a position is used, its declaration included, asked of the language server — the precise answer a text search for its name is not.',
             $at,
             fn (array $arguments): array => $this->locations($arguments, $this->api->codeIntelligence()->references(...)),
+            effect: ToolEffect::Reads,
         );
         $this->api->registerTool(
             'hover',
             'What the language server says about the symbol at a position: its signature and documentation, as text.',
             $at,
             $this->hover(...),
+            effect: ToolEffect::Reads,
         );
         $this->api->registerTool(
             'symbols',
             'The project\'s classes, functions, methods and other symbols whose name matches a query, from the running language server.',
             ['type' => 'object', 'properties' => ['query' => ['type' => 'string']], 'required' => ['query']],
             $this->symbols(...),
+            effect: ToolEffect::Reads,
         );
     }
 

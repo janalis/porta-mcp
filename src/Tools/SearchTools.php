@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Porta\McpPlugin\Tools;
 
 use Porta\Plugin\Api\PluginApi;
+use Porta\Plugin\Api\ToolEffect;
 use Porta\Search\ProjectSearch;
 use Porta\Search\SearchOptions;
 use Porta\Support\FiberWait;
@@ -53,6 +54,7 @@ final readonly class SearchTools
                 'required' => ['query'],
             ],
             $this->search(...),
+            effect: ToolEffect::Reads,
         );
     }
 

@@ -6,11 +6,12 @@ namespace Porta\McpPlugin\Tests\Server;
 
 use PHPUnit\Framework\TestCase;
 use Porta\McpPlugin\Server\ToolCatalog;
+use Porta\Plugin\Api\ToolEffect;
 
 final class ToolCatalogTest extends TestCase
 {
     /**
-     * @return array{plugin: string, id: string, description: string, inputSchema: array<string, mixed>, handler: \Closure(array<string, mixed>): string}
+     * @return array{plugin: string, id: string, description: string, inputSchema: array<string, mixed>, handler: \Closure(array<string, mixed>): string, effect: ?ToolEffect}
      */
     private static function tool(string $plugin, string $id, string $answer = ''): array
     {
@@ -20,11 +21,12 @@ final class ToolCatalogTest extends TestCase
             'description' => $plugin.' '.$id,
             'inputSchema' => ['type' => 'object', 'properties' => ['x' => ['type' => 'string']]],
             'handler' => static fn (array $arguments): string => $answer,
+            'effect' => null,
         ];
     }
 
     /**
-     * @param list<array{plugin: string, id: string, description: string, inputSchema: array<string, mixed>, handler: \Closure(array<string, mixed>): string}> $tools
+     * @param list<array{plugin: string, id: string, description: string, inputSchema: array<string, mixed>, handler: \Closure(array<string, mixed>): string, effect: ?ToolEffect}> $tools
      * @param list<string>                                                                                                                                  $hidden
      */
     private static function catalog(array $tools, array $hidden = []): ToolCatalog
@@ -43,6 +45,28 @@ final class ToolCatalogTest extends TestCase
             ],
             $catalog->describe(),
         );
+    }
+
+    public function testAnEffectIsSentAsTheHintsAClientDecidesBy(): void
+    {
+        $tools = [];
+        foreach (ToolEffect::cases() as $effect) {
+            $tool = self::tool('mcp', \strtolower($effect->name));
+            $tool['effect'] = $effect;
+            $tools[] = $tool;
+        }
+        $hints = \array_column(self::catalog($tools)->describe(), 'annotations', 'name');
+
+        $this->assertSame(
+            [
+                'reads' => ['readOnlyHint' => true, 'destructiveHint' => false, 'idempotentHint' => true, 'openWorldHint' => false],
+                'edits' => ['readOnlyHint' => false, 'destructiveHint' => false, 'idempotentHint' => false, 'openWorldHint' => false],
+                'writes' => ['readOnlyHint' => false, 'destructiveHint' => true, 'idempotentHint' => false, 'openWorldHint' => false],
+                'publishes' => ['readOnlyHint' => false, 'destructiveHint' => false, 'idempotentHint' => false, 'openWorldHint' => true],
+            ],
+            $hints,
+        );
+        $this->assertArrayNotHasKey('annotations', self::catalog([self::tool('mcp', 'silent')])->describe()[0], 'no effect, no hints');
     }
 
     public function testEmptyPropertiesAreSentAsAJsonObject(): void

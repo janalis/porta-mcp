@@ -46,6 +46,7 @@ final class SocketServerTest extends TestCase
                 'description' => 'echo',
                 'inputSchema' => ['type' => 'object'],
                 'handler' => static fn (array $arguments): string => (string) ($arguments['word'] ?? ''),
+                'effect' => null,
             ]],
             'mcp',
             static fn (): array => [],

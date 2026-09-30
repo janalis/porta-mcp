@@ -27,7 +27,7 @@ final class SessionTest extends TestCase
     {
         $tools = [];
         foreach ($handlers as $id => $handler) {
-            $tools[] = ['plugin' => 'mcp', 'id' => $id, 'description' => 'the '.$id.' tool', 'inputSchema' => ['type' => 'object'], 'handler' => $handler];
+            $tools[] = ['plugin' => 'mcp', 'id' => $id, 'description' => 'the '.$id.' tool', 'inputSchema' => ['type' => 'object'], 'handler' => $handler, 'effect' => null];
         }
 
         return new Session(
@@ -118,6 +118,42 @@ final class SessionTest extends TestCase
         $this->assertIsArray($result);
         $this->assertFalse($result['isError']);
         $this->assertSame("{\n    \"arguments\": 0,\n    \"path\": \"a/b\"\n}", $result['content'][0]['text']);
+    }
+
+    public function testAClientOnANewerProtocolAlsoGetsTheValueItself(): void
+    {
+        $session = $this->session([
+            'map' => static fn (array $arguments): array => ['path' => 'a/b'],
+            'list' => static fn (array $arguments): array => [['line' => 1]],
+            'text' => static fn (array $arguments): string => 'plain',
+        ]);
+        $session->receive(self::line(['id' => 1, 'method' => 'initialize', 'params' => ['protocolVersion' => Session::STRUCTURED_SINCE]]));
+
+        $session->receive(self::line(['id' => 2, 'method' => 'tools/call', 'params' => ['name' => 'map']]));
+        $this->assertSame(['path' => 'a/b'], $this->last()['result']['structuredContent'] ?? null);
+        $session->receive(self::line(['id' => 3, 'method' => 'tools/call', 'params' => ['name' => 'list']]));
+        $this->assertSame(['items' => [['line' => 1]]], $this->last()['result']['structuredContent'] ?? null, 'a list travels in an object');
+        $session->receive(self::line(['id' => 4, 'method' => 'tools/call', 'params' => ['name' => 'text']]));
+        $this->assertSame(['content' => [['type' => 'text', 'text' => 'plain']], 'isError' => false], $this->last()['result'], 'text is only text');
+    }
+
+    public function testAClientOnAnOlderProtocolGetsTextOnly(): void
+    {
+        $session = $this->session(['map' => static fn (array $arguments): array => ['path' => 'a/b']]);
+        $session->receive(self::line(['id' => 1, 'method' => 'initialize', 'params' => ['protocolVersion' => '2025-03-26']]));
+
+        $session->receive(self::line(['id' => 2, 'method' => 'tools/call', 'params' => ['name' => 'map']]));
+
+        $this->assertArrayNotHasKey('structuredContent', $this->last()['result']);
+    }
+
+    public function testAnAnswerThatCannotBeEncodedIsTheCallersError(): void
+    {
+        $session = $this->session(['nan' => static fn (array $arguments): array => ['value' => \NAN]]);
+
+        $session->receive(self::line(['id' => 6, 'method' => 'tools/call', 'params' => ['name' => 'nan']]));
+
+        $this->assertTrue($this->last()['result']['isError'] ?? null);
     }
 
     public function testAThrowingToolIsAnErrorResultTheCallerReads(): void

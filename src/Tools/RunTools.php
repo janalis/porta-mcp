@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Porta\McpPlugin\Tools;
 
 use Porta\Plugin\Api\PluginApi;
+use Porta\Plugin\Api\ToolEffect;
 use Porta\Support\FiberWait;
 
 /**
@@ -46,12 +47,14 @@ final readonly class RunTools
                 static fn (array $task): array => ['label' => $task['label'], 'command' => \implode(' ', $task['command'])],
                 $this->api->runs()->configurations(),
             ),
+            effect: ToolEffect::Reads,
         );
         $this->api->registerTool(
             'run',
             'Run one of run_configurations by its label, in a tab of the IDE\'s terminal panel, and answer with its exit code and the end of its output.',
             ['type' => 'object', 'properties' => ['label' => ['type' => 'string'], 'wait' => $wait], 'required' => ['label']],
             $this->run(...),
+            effect: ToolEffect::Writes,
         );
         $this->api->registerTool(
             'run_tests',
@@ -65,12 +68,14 @@ final readonly class RunTools
                 ],
             ],
             $this->tests(...),
+            effect: ToolEffect::Writes,
         );
         $this->api->registerTool(
             'run_output',
             'What a run printed so far (its end), whether it is still running, and its exit code — by the label it was started with; '.self::TESTS.' for run_tests.',
             ['type' => 'object', 'properties' => ['label' => ['type' => 'string']], 'required' => ['label']],
             $this->output(...),
+            effect: ToolEffect::Reads,
         );
     }
 
