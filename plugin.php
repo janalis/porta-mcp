@@ -37,7 +37,7 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
             'Let agents edit open files',
             'bool',
             true,
-            hint: 'replace_buffer and insert_text: unsaved, one undo step each. Off hides both',
+            hint: 'edit_buffer, replace_buffer and insert_text: unsaved, one undo step each. Off hides them',
         );
         $api->registerSetting(
             'allowSave',

@@ -26,7 +26,7 @@ use Porta\Plugin\Api\ToolEffect;
 final readonly class CoreTools
 {
     /** The tools that change a buffer — what the `allowEdits` setting hides. */
-    public const array EDITS = ['replace_buffer', 'insert_text'];
+    public const array EDITS = ['edit_buffer', 'replace_buffer', 'insert_text'];
 
     /** The tool that writes to disk — what the `allowSave` setting hides. */
     public const string SAVE = 'save_buffer';
@@ -50,9 +50,24 @@ final readonly class CoreTools
             effect: ToolEffect::Reads,
         );
         $this->api->registerTool(
+            'selection',
+            'What the user has selected in the active file: the text, and where it starts and ends (1-based line and column) — or that nothing is.',
+            self::NO_ARGUMENTS,
+            $this->selection(...),
+            effect: ToolEffect::Reads,
+        );
+        $this->api->registerTool(
             'read_buffer',
-            'The text of a file OPEN in the editor, unsaved edits included — the disk copy may be older. Without a path, the active file.',
-            ['type' => 'object', 'properties' => ['path' => $path('An open file')]],
+            'The text of a file OPEN in the editor, unsaved edits included — the disk copy may be older. Without a path, the active file; startLine and endLine (1-based, inclusive) read part of it.',
+            [
+                'type' => 'object',
+                'properties' => [
+                    'path' => $path('An open file'),
+                    'startLine' => ['type' => 'integer', 'minimum' => 1],
+                    'endLine' => ['type' => 'integer', 'minimum' => 1],
+                    'lineNumbers' => ['type' => 'boolean', 'description' => 'Prefix each line with its number and a tab'],
+                ],
+            ],
             $this->readBuffer(...),
             effect: ToolEffect::Reads,
         );
@@ -90,6 +105,21 @@ final readonly class CoreTools
                 'required' => ['message'],
             ],
             $this->notify(...),
+            effect: ToolEffect::Edits,
+        );
+        $this->api->registerTool(
+            'edit_buffer',
+            'Replace one exact piece of a file\'s text in the editor (opening it first if needed) as ONE undoable edit: oldText must occur exactly once in the text as read_buffer shows it — include enough of the lines around it. Not saved to disk: the user reviews it and saves.',
+            [
+                'type' => 'object',
+                'properties' => [
+                    'path' => $path('The file; the active one when omitted'),
+                    'oldText' => ['type' => 'string', 'description' => 'The text to replace, exactly, whitespace included'],
+                    'newText' => ['type' => 'string'],
+                ],
+                'required' => ['oldText', 'newText'],
+            ],
+            $this->editBuffer(...),
             effect: ToolEffect::Edits,
         );
         $this->api->registerTool(
@@ -141,9 +171,47 @@ final readonly class CoreTools
     private function readBuffer(array $arguments): string
     {
         $path = $this->arguments($arguments)->path() ?? $this->api->activeFile() ?? throw new \RuntimeException('No file is open');
-        $text = $this->api->openBuffers()->text($path);
+        $text = $this->api->openBuffers()->text($path) ?? throw new \RuntimeException(\sprintf('%s is not open in the editor — open_file it first, or read it from disk', $path));
+        $read = $this->arguments($arguments);
+        $numbered = $read->flag('lineNumbers');
+        $start = $read->position('startLine');
+        $end = $read->position('endLine');
+        if (null === $start && null === $end && !$numbered) {
+            return $text;
+        }
+        $lines = \explode("\n", $text);
+        $first = ($start ?? 1) - 1;
+        $last = \min($end ?? \count($lines), \count($lines));
+        if ($first >= \count($lines) || $last <= $first) {
+            throw new \InvalidArgumentException(\sprintf('%s has %d lines — lines %d to %d are not among them', $path, \count($lines), $first + 1, $end ?? \count($lines)));
+        }
+        $slice = \array_slice($lines, $first, $last - $first);
+        if ($numbered) {
+            $slice = \array_map(static fn (string $line, int $index): string => ($first + $index + 1)."\t".$line, $slice, \array_keys($slice));
+        }
 
-        return $text ?? throw new \RuntimeException(\sprintf('%s is not open in the editor — open_file it first, or read it from disk', $path));
+        return \implode("\n", $slice);
+    }
+
+    /**
+     * @param array<string, mixed> $arguments
+     *
+     * @return array{text: string, start: array{line: int, column: int}, end: array{line: int, column: int}}|string
+     */
+    private function selection(array $arguments): array|string
+    {
+        $active = $this->api->activeFile();
+        $selection = null === $active ? null : $this->api->openBuffers()->selection($active);
+
+        return (
+            null === $selection
+                ? 'Nothing is selected'
+                : [
+                    'text' => $selection['text'],
+                    'start' => ['line' => $selection['line'] + 1, 'column' => $selection['column'] + 1],
+                    'end' => ['line' => $selection['endLine'] + 1, 'column' => $selection['endColumn'] + 1],
+                ]
+        );
     }
 
     /** @param array<string, mixed> $arguments */
@@ -204,7 +272,53 @@ final readonly class CoreTools
     private function replaceBuffer(array $arguments): string
     {
         $text = $this->arguments($arguments)->text('text');
-        $path = $this->arguments($arguments)->path();
+        $this->editable($this->arguments($arguments)->path());
+        $this->api->replaceDocument($text);
+
+        return \sprintf('Replaced the text of %s — unsaved; the user can undo it in one step', $this->api->activeFile() ?? '');
+    }
+
+    /** @param array<string, mixed> $arguments */
+    private function editBuffer(array $arguments): string
+    {
+        $read = $this->arguments($arguments);
+        $old = $read->text('oldText');
+        $new = $read->text('newText');
+        if ('' === $old) {
+            throw new \InvalidArgumentException('oldText is empty — say what to replace, or use replace_buffer for the whole text');
+        }
+        $path = $this->editable($read->path());
+        $text = (string) $this->api->openBuffers()->text($path);
+        $at = \strpos($text, $old);
+        if (false === $at) {
+            throw new \InvalidArgumentException(\sprintf('oldText is not in %s — read_buffer shows its text as it is now, unsaved edits included', $path));
+        }
+        $count = \substr_count($text, $old);
+        if ($count > 1) {
+            throw new \InvalidArgumentException(\sprintf('oldText occurs %d times in %s — include more of the lines around the one to change', $count, $path));
+        }
+        [$line, $column] = self::lineAndColumn($text, $at);
+        [$endLine, $endColumn] = self::lineAndColumn($text, $at + \strlen($old));
+        $why = $this->api->openBuffers()->edit($path, $line, $column, $endLine, $endColumn, $new);
+        if (null !== $why) {
+            // The range comes from the text just read, in the same fiber, so
+            // it is a range of it; a refusal would still be the caller's to
+            // read rather than swallowed.
+            // @codeCoverageIgnoreStart
+            throw new \RuntimeException($why);
+
+            // @codeCoverageIgnoreEnd
+        }
+
+        return \sprintf('Edited %s at line %d — unsaved; the user can undo it in one step', $path, $line + 1);
+    }
+
+    /**
+     * The file to change, open and in front: $path, opened if it is not, or
+     * the active file when null.
+     */
+    private function editable(?string $path): string
+    {
         if (null !== $path && $path !== $this->api->activeFile()) {
             if (null === $this->api->openBuffers()->text($path) && !\is_file($path)) {
                 throw new \InvalidArgumentException(\sprintf('%s is not a file', $path));
@@ -213,11 +327,19 @@ final readonly class CoreTools
         }
         $target = $this->api->activeFile();
         if (null === $target || null === $this->api->openBuffers()->text($target) || null !== $path && $path !== $target) {
-            throw new \RuntimeException('No text file to replace — the active tab is not one');
+            throw new \RuntimeException('No text file to edit — the active tab is not one');
         }
-        $this->api->replaceDocument($text);
 
-        return \sprintf('Replaced the text of %s — unsaved; the user can undo it in one step', $target);
+        return $target;
+    }
+
+    /** @return array{int, int} the 0-based line and byte column of a byte offset */
+    private static function lineAndColumn(string $text, int $offset): array
+    {
+        $before = \substr($text, offset: 0, length: $offset);
+        $newline = \strrpos($before, needle: "\n");
+
+        return [\substr_count($before, needle: "\n"), false === $newline ? $offset : $offset - $newline - 1];
     }
 
     /** @param array<string, mixed> $arguments */

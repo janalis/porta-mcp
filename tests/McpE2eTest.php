@@ -55,7 +55,25 @@ final class McpE2eTest extends TestCase
             100 => function (Tui $tui, $terminal, Ide $ide) use ($project, $a, $b): void {
                 $this->connect($project);
                 $names = \array_column($this->request('tools/list')['result']['tools'], 'name');
-                $this->assertSame(['context', 'read_buffer', 'open_file', 'diagnostics', 'notify', 'replace_buffer', 'insert_text', 'search', 'definition', 'references', 'hover', 'symbols'], $names);
+                $this->assertSame(
+                    [
+                        'context',
+                        'selection',
+                        'read_buffer',
+                        'open_file',
+                        'diagnostics',
+                        'notify',
+                        'edit_buffer',
+                        'replace_buffer',
+                        'insert_text',
+                        'search',
+                        'definition',
+                        'references',
+                        'hover',
+                        'symbols',
+                    ],
+                    $names,
+                );
 
                 // Nothing open yet.
                 $context = $this->json('context');
@@ -65,7 +83,7 @@ final class McpE2eTest extends TestCase
                 $this->assertSame([], $context['openFiles']);
                 $this->refused('read_buffer', [], 'No file is open');
                 $this->refused('insert_text', ['text' => 'x'], 'No text file is active');
-                $this->refused('replace_buffer', ['text' => 'x'], 'No text file to replace');
+                $this->refused('replace_buffer', ['text' => 'x'], 'No text file to edit');
 
                 // Opening: at a line and column, and the refusals.
                 $this->assertSame('Opened '.$a, $this->ok('open_file', ['path' => 'src/A.php', 'line' => 2, 'column' => 3]));
@@ -152,6 +170,52 @@ final class McpE2eTest extends TestCase
         ]);
 
         $this->assertFileDoesNotExist($project->path('.porta/mcp.sock'), 'the socket goes with the IDE');
+    }
+
+    public function testAnAgentReadsPartOfAFileChangesOnePieceAndSeesTheSelection(): void
+    {
+        $project = self::project();
+        $a = \realpath($project->path('src/A.php'));
+
+        $this->runIde($project, $project->path('src/A.php'), [
+            100 => function (Tui $tui, $terminal, Ide $ide) use ($project, $a): void {
+                $this->connect($project);
+                $this->ok('insert_text', ['text' => '// top'."\n"]);
+
+                // Part of it, numbered.
+                $this->assertSame("2\t<?php\n3\techo 'a';", $this->ok('read_buffer', ['startLine' => 2, 'endLine' => 3, 'lineNumbers' => true]));
+                $this->assertSame("echo 'a';\n", $this->ok('read_buffer', ['startLine' => 3]), 'to the end');
+                $this->assertSame("1\t// top\n2\t<?php\n3\techo 'a';\n4\t", $this->ok('read_buffer', ['lineNumbers' => true]));
+                $this->refused('read_buffer', ['startLine' => 9], 'has 4 lines');
+                $this->refused('read_buffer', ['startLine' => 3, 'endLine' => 2], 'lines 3 to 2 are not among them');
+
+                // One exact piece, one undo step.
+                $this->assertSame('Edited '.$a.' at line 3 — unsaved; the user can undo it in one step', $this->ok('edit_buffer', ['oldText' => "'a'", 'newText' => "'é'\n// more"]));
+                $this->assertSame("// top\n<?php\necho 'é'\n// more;\n", $this->ok('read_buffer'));
+                $this->ok('edit_buffer', ['oldText' => "'é'\n// more;", 'newText' => 'done;']);
+                $this->assertSame("// top\n<?php\necho done;\n", $this->ok('read_buffer'), 'a range across lines, after a multibyte one');
+                $this->assertSame("<?php\necho 'a';\n", \file_get_contents($a), 'the disk is untouched');
+                $tui->handleInput("\x1a"); // ctrl+z
+                $this->assertSame("// top\n<?php\necho 'é'\n// more;\n", $this->ok('read_buffer'), 'each edit is one undo step');
+                $this->refused('edit_buffer', ['oldText' => 'nowhere', 'newText' => 'x'], 'oldText is not in '.$a);
+                $this->refused('edit_buffer', ['oldText' => '//', 'newText' => 'x'], 'oldText occurs 2 times');
+                $this->refused('edit_buffer', ['oldText' => '', 'newText' => 'x'], 'oldText is empty');
+                $this->refused('edit_buffer', ['oldText' => 'x'], 'newText is required');
+                $this->ok('edit_buffer', ['path' => 'src/B.php', 'oldText' => "'b'", 'newText' => "'b3'"]);
+                $this->assertSame("<?php\necho 'b3';\n", $this->ok('read_buffer'), 'a closed file, opened and brought forward');
+            },
+            200 => function (Tui $tui, $terminal, Ide $ide): void {
+                // What the user selected.
+                $this->assertSame('Nothing is selected', $this->ok('selection'));
+                $this->ok('open_file', ['path' => 'src/B.php', 'line' => 2, 'column' => 7]);
+                $tui->handleInput("\x1b[1;2C"); // shift+right
+                $tui->handleInput("\x1b[1;2C");
+                $this->assertSame(
+                    ['text' => 'b3', 'start' => ['line' => 2, 'column' => 7], 'end' => ['line' => 2, 'column' => 9]],
+                    $this->json('selection'),
+                );
+            },
+        ]);
     }
 
     public function testAnAgentAsksTheLanguageServerAboutAnyFile(): void
