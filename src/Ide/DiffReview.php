@@ -24,7 +24,8 @@ use Revolt\EventLoop\Suspension;
  * text back and answers `DIFF_REJECTED`. The answers are the ones the CLI
  * reads from VS Code, block by block. Accept does not save: the CLI writes
  * the file itself, and refuses to if it changed since Claude read it — the
- * buffer, holding exactly what is written, then reads as saved.
+ * buffer, holding exactly what is written, then reads as saved. A new file
+ * is made empty on disk to be shown, and unmade on accept for the same reason.
  *
  * A file with unsaved edits here is not the text the CLI proposed against,
  * so its proposal is turned down at once rather than laid over the user's
@@ -167,6 +168,11 @@ final class DiffReview
         $buffers = $this->api->openBuffers();
         $path = $proposal['path'];
         if ($accept) {
+            if ($proposal['created']) {
+                // Held on disk only while it waited: the CLI writes a new
+                // file only where none is, and this one it never read.
+                \unlink($path);
+            }
             $proposal['suspension']->resume(new TextBlocks(['FILE_SAVED', (string) $buffers->text($path)]));
 
             return;

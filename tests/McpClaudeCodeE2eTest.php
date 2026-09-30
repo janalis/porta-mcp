@@ -376,19 +376,6 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $this->assertSame("<?php\n// one\n!// TWO\n// three\n", $buffers->get($a)?->document->getText());
                 $this->assertFalse($buffers->get($a)?->isDirty(), 'back to what is on disk');
 
-                // A new file: proposed, turned down, gone again.
-                $c = $root.'/src/New/C.php';
-                $id = $this->propose($tui, $terminal, $c, "<?php\n// new\n", 'C.php');
-                $this->assertFileExists($c);
-                $this->assertTrue(Services::resolve($ide, CommandRegistry::class)->has('mcp:review_claude_change'));
-                $terminal->clearOutput();
-                Services::resolve($ide, CommandRegistry::class)->run('mcp:review_claude_change');
-                $this->awaitPainted($tui, $terminal, 'Claude proposes changes to C.php');
-                $tui->handleInput("\x1b[B");
-                $tui->handleInput("\r");
-                $this->assertSame(['DIFF_REJECTED', 'C.php'], $this->verdict($id));
-                $this->assertFileDoesNotExist($c);
-
                 // A second proposal under the same tab replaces the first.
                 $first = $this->propose($tui, $terminal, $a, "<?php\n// first\n", 'A.php');
                 $second = $this->propose($tui, $terminal, $a, "<?php\n// second\n", 'A.php');
@@ -447,6 +434,42 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $this->await(static fn (): bool => "<?php\n" === $buffers->get($root.'/src/B.php')?->document->getText(), what: 'the proposal withdrawn');
                 $editor = Services::resolve($ide, CodeEditorWidget::class);
                 $this->await(static fn (): bool => [] === $editor->decorations->remoteCaretsIn($a), what: 'its marks gone with it');
+            },
+        ]);
+    }
+
+    public function testANewFileIsOnDiskOnlyWhileItsProposalWaits(): void
+    {
+        $project = new TempProject(['src/B.php' => "<?php\n", '.porta.json' => '{"enabledPlugins":["mcp"]}']);
+        $root = (string) \realpath($project->dir);
+
+        $this->runIde($project, $project->path('src/B.php'), [
+            100 => function (Tui $tui, VirtualTerminal $terminal, Ide $ide) use ($root): void {
+                $this->connectCli($this->config->dir);
+                $buffers = Services::resolve($ide, BufferManager::class);
+                // A new file: proposed, turned down, gone again.
+                $c = $root.'/src/New/C.php';
+                $id = $this->propose($tui, $terminal, $c, "<?php\n// new\n", 'C.php');
+                $this->assertFileExists($c);
+                $this->assertTrue(Services::resolve($ide, CommandRegistry::class)->has('mcp:review_claude_change'));
+                $terminal->clearOutput();
+                Services::resolve($ide, CommandRegistry::class)->run('mcp:review_claude_change');
+                $this->awaitPainted($tui, $terminal, 'Claude proposes changes to C.php');
+                $tui->handleInput("\x1b[B");
+                $tui->handleInput("\r");
+                $this->assertSame(['DIFF_REJECTED', 'C.php'], $this->verdict($id));
+                $this->assertFileDoesNotExist($c);
+
+                // A new file kept: left for the CLI to write, which it does only where no file is.
+                $d = $root.'/src/D.php';
+                $id = $this->propose($tui, $terminal, $d, "<?php\n// new\n", 'D.php');
+                $tui->handleInput("\x1b\x19"); // ctrl+alt+y
+                $this->assertSame(['FILE_SAVED', "<?php\n// new\n"], $this->verdict($id));
+                $this->assertFileDoesNotExist($d);
+                \file_put_contents($d, data: "<?php\n// new\n");
+                \clearstatcache();
+                $ide->pollFilesystem();
+                $this->assertFalse($buffers->get($d)?->isDirty(), 'still open, and saved once written');
             },
         ]);
     }
