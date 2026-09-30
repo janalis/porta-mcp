@@ -76,6 +76,9 @@ final class Session
         string $connection = 'mcp',
         private readonly float $heartbeat = self::HEARTBEAT,
         private readonly ?\Closure $onClose = null,
+        // Off for Claude Code's IDE connection: the CLI reads those answers
+        // itself, as VS Code sends them — text alone.
+        private readonly bool $structured = true,
     ) {
         $this->caller = new ToolCaller($connection, self::UNNAMED);
     }
@@ -255,7 +258,7 @@ final class Session
             return ['content' => [['type' => 'text', 'text' => $error->getMessage()]], 'isError' => true];
         }
         $result = ['content' => [['type' => 'text', 'text' => $text]], 'isError' => false];
-        if (\is_array($answer) && $this->protocol >= self::STRUCTURED_SINCE) {
+        if ($this->structured && \is_array($answer) && $this->protocol >= self::STRUCTURED_SINCE) {
             $result['structuredContent'] = \array_is_list($answer) ? ['items' => $answer] : $answer;
         }
 

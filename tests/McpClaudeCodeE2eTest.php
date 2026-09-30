@@ -127,6 +127,11 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $this->assertTrue($this->cliCall('saveDocument', ['filePath' => $a])[0]['success'], 'nothing to save is saved');
                 $this->assertFalse($this->cliCall('saveDocument', ['filePath' => $root.'/src/B.php'])[0]['success']);
                 $this->assertSame([[], false], $this->cliCall('getDiagnostics', ['uri' => 'file://'.$a]));
+                $this->assertArrayNotHasKey(
+                    'structuredContent',
+                    $this->cliRequest('tools/call', ['name' => 'getDiagnostics', 'arguments' => new \stdClass()])['result'],
+                    'the CLI reads these answers itself, as VS Code sends them: text alone',
+                );
                 Services::resolve($ide, BufferService::class)->applyDiagnostics(
                     Uri::fromPath($a),
                     [

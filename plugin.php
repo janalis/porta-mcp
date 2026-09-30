@@ -168,13 +168,17 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
             [$root],
             // A client that goes leaves no proposal waiting on the user, and
             // no mark of it on screen.
-            static fn (Closure $send, string $connection): Session => new Session($send, $ideCatalog, Ide::VERSION, $connection, onClose: static function (ToolCaller $caller) use (
-                $diffs,
-                $presence,
-            ): void {
-                $diffs->rejectAll();
-                $presence->left($caller);
-            }),
+            static fn (Closure $send, string $connection): Session => new Session(
+                $send,
+                $ideCatalog,
+                Ide::VERSION,
+                $connection,
+                onClose: static function (ToolCaller $caller) use ($diffs, $presence): void {
+                    $diffs->rejectAll();
+                    $presence->left($caller);
+                },
+                structured: false,
+            ),
             $log->append(...),
         );
         $claude = new ClaudeCodeLink($ideServer, $feed);
