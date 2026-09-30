@@ -30,6 +30,30 @@
         <source>No Claude Code is connected — run /ide in claude, or start claude in the terminal</source>
         <target>No Claude Code is connected — run /ide in claude, or start claude in the terminal</target>
       </trans-unit>
+      <trans-unit id="8">
+        <source>Review Claude's Proposed Change</source>
+        <target>Review Claude's Proposed Change</target>
+      </trans-unit>
+      <trans-unit id="9">
+        <source>No change from Claude is waiting</source>
+        <target>No change from Claude is waiting</target>
+      </trans-unit>
+      <trans-unit id="10">
+        <source>Claude proposes changes to %file%</source>
+        <target>Claude proposes changes to %file%</target>
+      </trans-unit>
+      <trans-unit id="11">
+        <source>Accept — keep and save</source>
+        <target>Accept — keep and save</target>
+      </trans-unit>
+      <trans-unit id="12">
+        <source>Reject — put the old text back</source>
+        <target>Reject — put the old text back</target>
+      </trans-unit>
+      <trans-unit id="13">
+        <source>Claude proposed a change to %file%, which has unsaved edits here — save or discard them, then ask again</source>
+        <target>Claude proposed a change to %file%, which has unsaved edits here — save or discard them, then ask again</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

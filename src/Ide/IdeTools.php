@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Porta\McpPlugin\Ide;
 
 use Porta\Lsp\Uri;
+use Porta\McpPlugin\Server\TextBlocks;
 use Porta\Plugin\Api\PluginApi;
 use Porta\Plugin\Api\ToolEffect;
 
@@ -12,7 +13,8 @@ use Porta\Plugin\Api\ToolEffect;
  * The tools Claude Code calls on an IDE it is connected to — its own names
  * and shapes, the ones VS Code's extension answers, so the CLI needs nothing
  * Porta-specific: open a file, the selection, the open editors, the project
- * folder, diagnostics, whether a file has unsaved edits, save one.
+ * folder, diagnostics, whether a file has unsaved edits, save one — and show
+ * a proposed change for the user to accept or reject ({@see DiffReview}).
  *
  * Kept apart from {@see PluginApi::registerTool()}: these are this
  * connection's own protocol, not tools an agent on `porta mcp` should see
@@ -31,9 +33,10 @@ final readonly class IdeTools
         private PluginApi $api,
         private SelectionFeed $selection,
         private string $root,
+        private DiffReview $diffs,
     ) {}
 
-    /** @return list<array{plugin: string, id: string, description: string, inputSchema: array<string, mixed>, handler: \Closure(array<string, mixed>): (string|array<array-key, mixed>), effect: ToolEffect}> */
+    /** @return list<array{plugin: string, id: string, description: string, inputSchema: array<string, mixed>, handler: \Closure(array<string, mixed>): (string|array<array-key, mixed>|TextBlocks), effect: ToolEffect}> */
     public function rows(): array
     {
         $file = ['type' => 'object', 'properties' => ['filePath' => ['type' => 'string']], 'required' => ['filePath']];
@@ -71,15 +74,44 @@ final readonly class IdeTools
             ),
             $this->row('checkDocumentDirty', 'Whether an open file has unsaved edits.', $file, $this->dirty(...), ToolEffect::Reads),
             $this->row('saveDocument', 'Save an open file.', $file, $this->save(...), ToolEffect::Writes),
-            $this->row('closeAllDiffTabs', 'Close the diff tabs this connection opened.', $none, static fn (array $arguments): string => 'CLOSED_0_DIFF_TABS', ToolEffect::Edits),
+            $this->row(
+                'openDiff',
+                'Show a proposed new text for a file and wait for the user to accept or reject it.',
+                [
+                    'type' => 'object',
+                    'properties' => [
+                        'old_file_path' => ['type' => 'string'],
+                        'new_file_path' => ['type' => 'string'],
+                        'new_file_contents' => ['type' => 'string'],
+                        'tab_name' => ['type' => 'string'],
+                    ],
+                    'required' => ['old_file_path', 'new_file_path', 'new_file_contents', 'tab_name'],
+                ],
+                $this->diffs->open(...),
+                ToolEffect::Writes,
+            ),
+            $this->row(
+                'close_tab',
+                'Close a tab this connection opened.',
+                ['type' => 'object', 'properties' => ['tab_name' => ['type' => 'string']]],
+                static fn (array $arguments): string => 'TAB_CLOSED',
+                ToolEffect::Edits,
+            ),
+            $this->row(
+                'closeAllDiffTabs',
+                'Turn down every proposal still waiting for the user.',
+                $none,
+                fn (array $arguments): string => \sprintf('CLOSED_%d_DIFF_TABS', $this->diffs->rejectAll()),
+                ToolEffect::Edits,
+            ),
         ];
     }
 
     /**
      * @param array<string, mixed>                                               $schema
-     * @param \Closure(array<string, mixed>): (string|array<array-key, mixed>) $handler
+     * @param \Closure(array<string, mixed>): (string|array<array-key, mixed>|TextBlocks) $handler
      *
-     * @return array{plugin: string, id: string, description: string, inputSchema: array<string, mixed>, handler: \Closure(array<string, mixed>): (string|array<array-key, mixed>), effect: ToolEffect}
+     * @return array{plugin: string, id: string, description: string, inputSchema: array<string, mixed>, handler: \Closure(array<string, mixed>): (string|array<array-key, mixed>|TextBlocks), effect: ToolEffect}
      */
     private function row(string $id, string $description, array $schema, \Closure $handler, ToolEffect $effect): array
     {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Porta\Event\ToolsChanged;
 use Porta\Ide;
 use Porta\McpPlugin\Ide\ClaudeCodeLink;
+use Porta\McpPlugin\Ide\DiffReview;
 use Porta\McpPlugin\Ide\IdeServer;
 use Porta\McpPlugin\Ide\IdeTools;
 use Porta\McpPlugin\Ide\LockFile;
@@ -151,15 +152,22 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
         $resolved = \realpath($api->projectRoot());
         $root = false === $resolved ? $api->projectRoot() : $resolved;
         $feed = new SelectionFeed($api);
-        $ideCatalog = new ToolCatalog(new IdeTools($api, $feed, $root)->rows(...), $this->name(), static fn (): array => []);
+        $diffs = new DiffReview($api);
+        $ideCatalog = new ToolCatalog(new IdeTools($api, $feed, $root, $diffs)->rows(...), $this->name(), static fn (): array => []);
         $ideServer = new IdeServer(
             new LockFile(LockFile::directory()),
             [$root],
-            static fn (Closure $send, string $connection): Session => new Session($send, $ideCatalog, Ide::VERSION, $connection),
+            // A client that goes leaves no proposal waiting on the user.
+            static fn (Closure $send, string $connection): Session => new Session($send, $ideCatalog, Ide::VERSION, $connection, onClose: $diffs->rejectAll(...)),
             $log->append(...),
         );
         $claude = new ClaudeCodeLink($ideServer, $feed);
         $this->claude = $claude;
+        $api->registerCommand('review_claude_change', 'Review Claude\'s Proposed Change', static function () use ($api, $diffs): void {
+            if (!$diffs->review()) {
+                $api->notify($api->trans('No change from Claude is waiting'), ToastSeverity::Info, 4.0);
+            }
+        });
         $api->registerCommand('mention_in_claude', 'Send Selection to Claude Code', static function () use ($api, $claude): void {
             if (0 === $claude->mention()) {
                 $api->notify($api->trans('No Claude Code is connected — run /ide in claude, or start claude in the terminal'), ToastSeverity::Warn, 5.0);

@@ -6,6 +6,7 @@ namespace Porta\McpPlugin\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Porta\Config\CommandRegistry;
+use Porta\Editor\BufferManager;
 use Porta\Editor\BufferService;
 use Porta\Editor\DiagnosticSeverity;
 use Porta\Ide;
@@ -21,6 +22,7 @@ use Porta\Tests\Support\Services;
 use Porta\Tests\Support\TempProject;
 use Porta\Tests\Support\Toasts;
 use Porta\Tests\Support\UsesBundledPlugins;
+use Symfony\Component\Tui\Terminal\VirtualTerminal;
 use Symfony\Component\Tui\Tui;
 
 /**
@@ -256,6 +258,142 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $settings->change('mcp', 'claudeCode', true);
                 $lifecycle->onPluginSettingChanged('mcp', 'claudeCode', true);
                 $this->assertCount(2, \array_filter(Toasts::all($ide), static fn (string $toast): bool => \str_contains($toast, 'could not be announced')), 'turned on again, told again');
+            },
+        ]);
+    }
+
+    /**
+     * Send an openDiff and wait until Porta asks the user about it; the
+     * request's id, to read the verdict with.
+     */
+    private function propose(Tui $tui, VirtualTerminal $terminal, string $path, string $text, string $tab): int
+    {
+        $id = ++$this->cliId;
+        $terminal->clearOutput();
+        $this->cliWrite(self::clientFrame(\json_encode(
+            [
+                'jsonrpc' => '2.0',
+                'id' => $id,
+                'method' => 'tools/call',
+                'params' => ['name' => 'openDiff', 'arguments' => ['old_file_path' => $path, 'new_file_path' => $path, 'new_file_contents' => $text, 'tab_name' => $tab]],
+            ],
+            \JSON_THROW_ON_ERROR,
+        )));
+        $this->awaitPainted($tui, $terminal, 'Claude proposes changes to '.\basename($path));
+
+        return $id;
+    }
+
+    /** @return list<string> the verdict's text blocks */
+    private function verdict(int $id): array
+    {
+        /** @var array{result: array{content: list<array{text: string}>}} $answer */
+        $answer = $this->cliAwait(static fn (array $m): bool => $id === ($m['id'] ?? null), 'the verdict');
+
+        return \array_column($answer['result']['content'], 'text');
+    }
+
+    public function testAProposedChangeIsShownInTheFileAndWaitsForTheUsersVerdict(): void
+    {
+        $project = new TempProject([
+            'src/A.php' => "<?php\n// one\n// two\n// three\n",
+            'src/B.php' => "<?php\n",
+            '.porta.json' => '{"enabledPlugins":["mcp"]}',
+        ]);
+        $root = (string) \realpath($project->dir);
+        $a = $root.'/src/A.php';
+
+        $this->runIde($project, $project->path('src/B.php'), [
+            100 => function (Tui $tui, VirtualTerminal $terminal, Ide $ide) use ($root, $a): void {
+                $this->connectCli($this->config->dir);
+                $buffers = Services::resolve($ide, BufferManager::class);
+                $this->assertSame(['new_file_path is required', true], $this->cliCall('openDiff'));
+                $this->assertSame(['new_file_contents is required', true], $this->cliCall('openDiff', ['new_file_path' => $a]));
+                $this->assertTrue(
+                    $this->cliCall('openDiff', ['new_file_path' => $a.'/inside/a/file.php', 'new_file_contents' => 'x', 'tab_name' => 'x'])[1],
+                    'a file that cannot be made is the caller\'s error',
+                );
+                $this->assertSame(
+                    ['src already exists', true],
+                    $this->cliCall('openDiff', ['new_file_path' => $root.'/src', 'new_file_contents' => 'x', 'tab_name' => 'x']),
+                    'a folder is not a file to propose',
+                );
+
+                // The same text proposed: shown, nothing to change, still the user's call.
+                $id = $this->propose($tui, $terminal, $root.'/src/B.php', "<?php\n", 'B.php (same)');
+                $this->assertFalse($buffers->get($root.'/src/B.php')?->isDirty());
+                $tui->handleInput("\x1b[B");
+                $tui->handleInput("\r");
+                $this->assertSame(['DIFF_REJECTED', 'B.php (same)'], $this->verdict($id));
+
+                // Accepted, after the user touched it up: the file is saved as it stands.
+                $id = $this->propose($tui, $terminal, $a, "<?php\n// one\n// TWO\n// three\n", 'A.php (edit)');
+                $this->assertSame($a, $buffers->active()?->path, 'brought forward to be read');
+                $this->assertSame("<?php\n// one\n// TWO\n// three\n", $buffers->get($a)?->document->getText());
+                $this->assertSame(2, $buffers->get($a)?->document->cursorLine, 'the caret on the change');
+                $buffers->get($a)?->document->insert('!');
+                $tui->handleInput("\r"); // Accept — the first choice
+                $this->assertSame(['FILE_SAVED', "<?php\n// one\n!// TWO\n// three\n"], $this->verdict($id));
+                $this->assertSame("<?php\n// one\n!// TWO\n// three\n", \file_get_contents($a), 'saved');
+
+                // Rejected: the old text back.
+                $id = $this->propose($tui, $terminal, $a, "<?php\n", 'A.php (cut)');
+                $this->assertSame("<?php\n", $buffers->get($a)?->document->getText(), 'lines at the end go, newline and all');
+                $tui->handleInput("\x1b[B");
+                $tui->handleInput("\r"); // Reject
+                $this->assertSame(['DIFF_REJECTED', 'A.php (cut)'], $this->verdict($id));
+                $this->assertSame("<?php\n// one\n!// TWO\n// three\n", $buffers->get($a)?->document->getText());
+                $this->assertFalse($buffers->get($a)?->isDirty(), 'back to what is on disk');
+
+                // A new file: proposed, turned down, gone again.
+                $c = $root.'/src/New/C.php';
+                $id = $this->propose($tui, $terminal, $c, "<?php\n// new\n", 'C.php');
+                $this->assertFileExists($c);
+                $tui->handleInput("\x1b");
+                $this->assertTrue(Services::resolve($ide, CommandRegistry::class)->has('mcp:review_claude_change'));
+                $terminal->clearOutput();
+                Services::resolve($ide, CommandRegistry::class)->run('mcp:review_claude_change');
+                $this->awaitPainted($tui, $terminal, 'Claude proposes changes to C.php');
+                $tui->handleInput("\x1b[B");
+                $tui->handleInput("\r");
+                $this->assertSame(['DIFF_REJECTED', 'C.php'], $this->verdict($id));
+                $this->assertFileDoesNotExist($c);
+
+                // A second proposal under the same tab replaces the first.
+                $first = $this->propose($tui, $terminal, $a, "<?php\n// first\n", 'A.php');
+                $tui->handleInput("\x1b");
+                $second = $this->propose($tui, $terminal, $a, "<?php\n// second\n", 'A.php');
+                $this->assertSame(['DIFF_REJECTED', 'A.php'], $this->verdict($first));
+                $this->assertSame("<?php\n// second\n", $buffers->get($a)?->document->getText(), 'shown from the file as it was');
+                $this->assertSame(['CLOSED_1_DIFF_TABS', false], $this->cliCall('closeAllDiffTabs'));
+                $this->assertSame(['DIFF_REJECTED', 'A.php'], $this->verdict($second));
+                $saved = \file_get_contents($a);
+                $tui->handleInput("\r"); // Accept, on a question whose proposal is gone
+                $this->assertSame($saved, \file_get_contents($a), 'a stale answer changes nothing');
+                $this->assertSame(['TAB_CLOSED', false], $this->cliCall('close_tab', ['tab_name' => 'A.php']));
+                Services::resolve($ide, CommandRegistry::class)->run('mcp:review_claude_change');
+                $this->assertContains('No change from Claude is waiting', Toasts::all($ide));
+
+                // Unsaved edits here are not what the CLI proposed against.
+                $buffers->get($a)?->document->insert('x');
+                $this->cliWrite(self::clientFrame(\json_encode(
+                    [
+                        'jsonrpc' => '2.0',
+                        'id' => 99,
+                        'method' => 'tools/call',
+                        'params' => ['name' => 'openDiff', 'arguments' => ['old_file_path' => $a, 'new_file_path' => $a, 'new_file_contents' => 'x', 'tab_name' => 'dirty']],
+                    ],
+                    \JSON_THROW_ON_ERROR,
+                )));
+                $this->assertSame(['DIFF_REJECTED', 'dirty'], $this->verdict(99));
+                $this->assertContains('Claude proposed a change to A.php, which has unsaved edits here — save or discard them, then ask again', Toasts::all($ide));
+
+                // The client going takes its pending proposal with it.
+                $buffers->get($a)?->document->undo();
+                $this->propose($tui, $terminal, $root.'/src/B.php', "<?php\n// gone\n", 'B.php');
+                $this->assertIsResource($this->cli);
+                \fclose($this->cli);
+                $this->await(static fn (): bool => "<?php\n" === $buffers->get($root.'/src/B.php')?->document->getText(), what: 'the proposal withdrawn');
             },
         ]);
     }

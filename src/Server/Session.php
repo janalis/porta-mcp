@@ -234,7 +234,7 @@ final class Session
      * the value itself — which must be an object, so a list travels as
      * `{"items": [...]}`.
      *
-     * @param \Closure(array<string, mixed>, ToolCaller=): (string|array<array-key, mixed>) $handler
+     * @param \Closure(array<string, mixed>, ToolCaller=): (string|array<array-key, mixed>|TextBlocks) $handler
      * @param array<string, mixed>                                              $arguments
      *
      * @return array<string, mixed>
@@ -243,6 +243,9 @@ final class Session
     {
         try {
             $answer = $handler($arguments, $this->caller);
+            if ($answer instanceof TextBlocks) {
+                return ['content' => \array_map(static fn (string $text): array => ['type' => 'text', 'text' => $text], $answer->texts), 'isError' => false];
+            }
             $text = \is_string($answer)
                 ? $answer
                 : \json_encode($answer, \JSON_THROW_ON_ERROR | \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE | \JSON_INVALID_UTF8_SUBSTITUTE);

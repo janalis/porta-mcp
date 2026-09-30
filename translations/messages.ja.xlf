@@ -30,6 +30,30 @@
         <source>No Claude Code is connected — run /ide in claude, or start claude in the terminal</source>
         <target>Claude Code が接続されていません — claude で /ide を実行するか、ターミナルで claude を起動してください</target>
       </trans-unit>
+      <trans-unit id="8">
+        <source>Review Claude's Proposed Change</source>
+        <target>Claude の変更案を確認</target>
+      </trans-unit>
+      <trans-unit id="9">
+        <source>No change from Claude is waiting</source>
+        <target>保留中の Claude の変更はありません</target>
+      </trans-unit>
+      <trans-unit id="10">
+        <source>Claude proposes changes to %file%</source>
+        <target>Claude が %file% の変更を提案しています</target>
+      </trans-unit>
+      <trans-unit id="11">
+        <source>Accept — keep and save</source>
+        <target>承認 — 保持して保存</target>
+      </trans-unit>
+      <trans-unit id="12">
+        <source>Reject — put the old text back</source>
+        <target>却下 — 元のテキストに戻す</target>
+      </trans-unit>
+      <trans-unit id="13">
+        <source>Claude proposed a change to %file%, which has unsaved edits here — save or discard them, then ask again</source>
+        <target>Claude が %file% の変更を提案しましたが、未保存の編集があります — 保存または破棄してから再度依頼してください</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

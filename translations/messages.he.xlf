@@ -30,6 +30,30 @@
         <source>No Claude Code is connected — run /ide in claude, or start claude in the terminal</source>
         <target>אין Claude Code מחובר — הריצו ‎/ide‎ ב־claude, או הפעילו את claude במסוף</target>
       </trans-unit>
+      <trans-unit id="8">
+        <source>Review Claude's Proposed Change</source>
+        <target>סקירת השינוי שהציע Claude</target>
+      </trans-unit>
+      <trans-unit id="9">
+        <source>No change from Claude is waiting</source>
+        <target>אין שינוי מ־Claude שממתין</target>
+      </trans-unit>
+      <trans-unit id="10">
+        <source>Claude proposes changes to %file%</source>
+        <target>Claude מציע שינויים ב־%file%</target>
+      </trans-unit>
+      <trans-unit id="11">
+        <source>Accept — keep and save</source>
+        <target>קבלה — שמירה</target>
+      </trans-unit>
+      <trans-unit id="12">
+        <source>Reject — put the old text back</source>
+        <target>דחייה — החזרת הטקסט הקודם</target>
+      </trans-unit>
+      <trans-unit id="13">
+        <source>Claude proposed a change to %file%, which has unsaved edits here — save or discard them, then ask again</source>
+        <target>Claude הציע שינוי ב־%file%, שיש בו כאן שינויים שלא נשמרו — שמרו או בטלו אותם ובקשו שוב</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>
