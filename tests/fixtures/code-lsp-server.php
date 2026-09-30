@@ -12,6 +12,11 @@ declare(strict_types=1);
  * say. A symbol query of `boom` is an error, and the symbol list carries one
  * kind no reader has a name for.
  *
+ * It also changes code: renaming to `boom` is an error and to `nothing` has
+ * no answer; any other name renames A in A.php, B.php and C.php. Formatting
+ * B.php adds a comment line, by the options it was sent; A.php is already
+ * formatted.
+ *
  * SIGTERM is ignored under a bounded alarm, as the other stubs do, so the
  * server answers instead of dying before its first read.
  */
@@ -50,6 +55,9 @@ foreach (readFrames($in) as $message) {
             'referencesProvider' => true,
             'hoverProvider' => true,
             'workspaceSymbolProvider' => true,
+            'documentSymbolProvider' => true,
+            'renameProvider' => true,
+            'documentFormattingProvider' => true,
         ]]);
         continue;
     }
@@ -71,6 +79,31 @@ foreach (readFrames($in) as $message) {
                 ['name' => 'A', 'kind' => 5, 'location' => $location('A.php', line: 1, character: 6)],
                 ['name' => 'odd', 'kind' => 99, 'location' => $location('A.php', line: 0, character: 0)],
             ]),
+        'textDocument/documentSymbol' => $reply($message, [[
+            'name' => 'A',
+            'kind' => 5,
+            'range' => ['start' => ['line' => 1, 'character' => 0], 'end' => ['line' => 1, 'character' => 10]],
+            'selectionRange' => ['start' => ['line' => 1, 'character' => 6], 'end' => ['line' => 1, 'character' => 7]],
+            'children' => [['name' => 'run', 'kind' => 6, 'selectionRange' => ['start' => ['line' => 1, 'character' => 9], 'end' => ['line' => 1, 'character' => 9]]]],
+        ]]),
+        'textDocument/rename' => match ($message['params']['newName'] ?? '') {
+            'boom' => $refuse($message),
+            'nothing' => $reply($message, result: null),
+            default => $reply($message, ['changes' => \array_merge(...\array_map(
+                static fn (array $at): array => [$at[0]['uri'] => [['range' => $at[0]['range'], 'newText' => $message['params']['newName']]]],
+                [
+                    [$location('A.php', line: 1, character: 6)],
+                    [$location('B.php', line: 1, character: 4)],
+                    [$location('C.php', line: 1, character: 4)],
+                ],
+            ))]),
+        },
+        'textDocument/formatting' => \str_ends_with((string) ($message['params']['textDocument']['uri'] ?? ''), 'B.php')
+            ? $reply($message, [[
+                'range' => ['start' => ['line' => 1, 'character' => 0], 'end' => ['line' => 1, 'character' => 0]],
+                'newText' => '// formatted, tabSize '.($message['params']['options']['tabSize'] ?? '?')."\n",
+            ]])
+            : $reply($message, result: []),
         'exit' => exit(0),
         default => null,
     };

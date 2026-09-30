@@ -37,14 +37,14 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
             'Let agents edit open files',
             'bool',
             true,
-            hint: 'edit_buffer, replace_buffer and insert_text: unsaved, one undo step each. Off hides them',
+            hint: 'edit_buffer, replace_buffer, insert_text and format: unsaved, one undo step each. Off hides them',
         );
         $api->registerSetting(
             'allowSave',
             'Let agents save files',
             'bool',
             false,
-            hint: 'save_buffer writes an open file to disk as Ctrl+S does; a file changed on disk is never overwritten',
+            hint: 'save_buffer writes an open file to disk as Ctrl+S does; a file changed on disk is never overwritten. With edits allowed too, rename rewrites files that are not open',
         );
         new CoreTools($api)->register();
         new SearchTools($api)->register();
@@ -72,8 +72,10 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
             $api->tools(...),
             $this->name(),
             static fn (): array => [
-                ...(true === $api->setting('allowEdits') ? [] : CoreTools::EDITS),
+                ...(true === $api->setting('allowEdits') ? [] : [...CoreTools::EDITS, CodeTools::FORMAT]),
                 ...(true === $api->setting('allowSave') ? [] : [CoreTools::SAVE]),
+                // A rename rewrites the files that are not open: an edit AND a save.
+                ...(true === $api->setting('allowEdits') && true === $api->setting('allowSave') ? [] : [CodeTools::RENAME]),
                 ...(true === $api->setting('allowRuns') ? [] : RunTools::RUNS),
             ],
         );

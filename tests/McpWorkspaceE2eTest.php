@@ -95,6 +95,7 @@ final class McpWorkspaceE2eTest extends TestCase
             100 => function (Tui $tui, $terminal, Ide $ide) use ($off): void {
                 $this->connect($off);
                 $this->assertNotContains('save_buffer', $this->names(), 'off by default');
+                $this->assertNotContains('rename', $this->names(), 'it rewrites files that are not open: a save too');
             },
         ]);
 

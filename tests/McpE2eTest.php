@@ -71,6 +71,8 @@ final class McpE2eTest extends TestCase
                         'references',
                         'hover',
                         'symbols',
+                        'outline',
+                        'format',
                     ],
                     $names,
                 );
@@ -279,6 +281,71 @@ final class McpE2eTest extends TestCase
         ]);
     }
 
+    public function testAnAgentOutlinesAFileFormatsItAndRenamesASymbol(): void
+    {
+        $project = new TempProject([
+            'src/A.php' => "<?php\nclass A {}\n",
+            'src/B.php' => "<?php\nnew A();\n",
+            'src/C.php' => "<?php\nnew A();\n",
+            'README.md' => "# hi\n",
+            '.porta.json' => \json_encode(
+                [
+                    'enabledPlugins' => ['mcp'],
+                    'lsp' => ['php' => \PHP_BINARY.' '.__DIR__.'/fixtures/code-lsp-server.php'],
+                    'plugins' => ['mcp' => ['lspTimeout' => 5, 'allowSave' => true]],
+                ],
+                \JSON_THROW_ON_ERROR,
+            ),
+        ]);
+        $a = (string) \realpath($project->path('src/A.php'));
+        $b = (string) \realpath($project->path('src/B.php'));
+        $c = (string) \realpath($project->path('src/C.php'));
+
+        $this->runIde($project, $project->path('src/B.php'), [
+            100 => function (Tui $tui, $terminal, Ide $ide) use ($project, $a, $b): void {
+                $this->awaitLspSession($ide);
+                $this->connect($project);
+                $this->assertContains('rename', \array_column($this->request('tools/list')['result']['tools'], 'name'), 'edits and saves allowed');
+
+                $this->assertSame(
+                    [
+                        ['name' => 'A', 'kind' => 'class', 'line' => 2, 'column' => 7, 'depth' => 0],
+                        ['name' => 'run', 'kind' => 'method', 'line' => 2, 'column' => 10, 'depth' => 1],
+                    ],
+                    $this->json('outline', ['path' => 'src/A.php']),
+                    'a file nobody has open, nested, 1-based',
+                );
+                $this->refused('outline', [], 'path is required');
+                $this->refused('outline', ['path' => 'README.md'], 'No language server is configured for README.md');
+
+                // Formatting: the open file, by its own indentation, one undo step.
+                $this->assertSame('Formatted '.$b.' — unsaved; the user can undo it in one step', $this->ok('format'));
+                $this->assertSame("<?php\n// formatted, tabSize 4\nnew A();\n", $this->ok('read_buffer'));
+                $tui->handleInput("\x1a"); // ctrl+z
+                $this->assertSame("<?php\nnew A();\n", $this->ok('read_buffer'));
+                $this->assertSame($a.' is already formatted', $this->ok('format', ['path' => 'src/A.php']), 'a closed file is opened first');
+                $this->assertSame($a, $this->json('context')['activeFile']);
+                $this->refused('format', ['path' => 'src/D.php'], 'is not a file');
+                $this->refused('format', ['path' => 'README.md'], 'No language server is configured for README.md');
+            },
+            200 => function (Tui $tui, $terminal, Ide $ide) use ($a, $b, $c): void {
+                // Renaming: open files edited and unsaved, the others rewritten.
+                $renamed = $this->json('rename', ['path' => 'src/A.php', 'line' => 2, 'column' => 7, 'newName' => 'Z']);
+                $this->assertSame(3, $renamed['files']);
+                $this->assertSame([], $renamed['skipped']);
+                $this->assertStringContainsString('Undo Refactoring', $renamed['note']);
+                $this->assertSame("<?php\nclass Z {}\n", $this->ok('read_buffer', ['path' => $a]));
+                $this->assertSame("<?php\nnew Z();\n", $this->ok('read_buffer', ['path' => $b]));
+                $this->assertSame("<?php\nclass A {}\n", \file_get_contents($a), 'an open file stays unsaved');
+                $this->assertSame("<?php\nnew Z();\n", \file_get_contents($c), 'a file that is not open is rewritten');
+
+                $this->refused('rename', ['path' => 'src/A.php', 'line' => 2, 'newName' => 'boom'], 'Index not ready');
+                $this->refused('rename', ['path' => 'src/A.php', 'line' => 2, 'newName' => 'nothing'], 'cannot rename anything at this position');
+                $this->refused('rename', ['path' => 'src/A.php', 'line' => 2, 'newName' => ' '], 'newName is required');
+            },
+        ]);
+    }
+
     public function testOtherPluginsToolsAreServedAndALiveChangeIsAnnounced(): void
     {
         $this->skipWithoutGit();
@@ -340,6 +407,9 @@ final class McpE2eTest extends TestCase
                 $names = \array_column($this->request('tools/list')['result']['tools'], 'name');
                 $this->assertNotContains('replace_buffer', $names);
                 $this->assertNotContains('insert_text', $names);
+                $this->assertNotContains('edit_buffer', $names);
+                $this->assertNotContains('format', $names);
+                $this->assertNotContains('rename', $names);
                 $this->assertContains('read_buffer', $names);
 
                 $answer = $this->request('tools/call', ['name' => 'insert_text', 'arguments' => ['text' => 'x']]);
