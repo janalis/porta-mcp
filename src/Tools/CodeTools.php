@@ -148,7 +148,7 @@ final readonly class CodeTools
     private function locations(array $arguments, \Closure $ask, ToolCaller $caller): array
     {
         [$path, $line, $column] = $this->position($arguments);
-        $this->presence->reading($caller, $path, $line, $column);
+        $this->presence->reading($caller, $path, $line, $this->byteColumn($path, $line, $column));
         /** @var array{0: list<array{path: string, line: int, column: int, text: string}>, 1: ?string} $answer */
         $answer = $this->wait(static fn (\Closure $done) => $ask($path, $line, $column, static fn (array $rows, ?string $error) => $done([$rows, $error])));
         [$rows, $error] = $answer;
@@ -163,7 +163,7 @@ final readonly class CodeTools
     private function hover(array $arguments, ToolCaller $caller): string
     {
         [$path, $line, $column] = $this->position($arguments);
-        $this->presence->reading($caller, $path, $line, $column);
+        $this->presence->reading($caller, $path, $line, $this->byteColumn($path, $line, $column));
         /** @var array{0: ?string, 1: ?string} $answer */
         $answer = $this->wait(fn (\Closure $done) => $this->api->codeIntelligence()->hover($path, $line, $column, static fn (?string $text, ?string $error) => $done([$text, $error])));
         [$text, $error] = $answer;
@@ -234,7 +234,7 @@ final readonly class CodeTools
         if ('' === \trim($newName)) {
             throw new \InvalidArgumentException('newName is required');
         }
-        $this->presence->editing($caller, $path, $line, $column);
+        $this->presence->editing($caller, $path, $line, $this->byteColumn($path, $line, $column));
         /** @var array{0: array{files: int, skipped: list<string>}|null, 1: ?string} $answer */
         $answer = $this->wait(fn (\Closure $done) => $this->api->codeIntelligence()->rename($path, $line, $column, $newName, static fn (?array $outcome, ?string $error) => $done([$outcome, $error])));
         [$outcome, $error] = $answer;
@@ -259,6 +259,27 @@ final readonly class CodeTools
         }
 
         return $applied > 0 ? \sprintf('Formatted %s — unsaved; the user can undo it in one step', $path) : \sprintf('%s is already formatted', $path);
+    }
+
+    /**
+     * A protocol column — UTF-16 code units — as the editor's byte column on
+     * that line of $path, for the agent's caret: an accented letter is one
+     * unit and two bytes, and counting it as one byte puts the caret short.
+     */
+    private function byteColumn(string $path, int $line, int $utf16): int
+    {
+        $text = $this->api->openBuffers()->text($path) ?? (\is_file($path) ? (string) \file_get_contents($path) : '');
+        $bytes = 0;
+        $units = 0;
+        foreach (\mb_str_split(\explode("\n", $text)[$line] ?? '') as $char) {
+            if ($units >= $utf16) {
+                break;
+            }
+            $units += 4 === \strlen($char) ? 2 : 1;
+            $bytes += \strlen($char);
+        }
+
+        return $bytes;
     }
 
     /**

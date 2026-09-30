@@ -14,6 +14,14 @@
         <source>%count% agents</source>
         <target>%count% 個のエージェント</target>
       </trans-unit>
+      <trans-unit id="4">
+        <source>Go to %file% (%agent%)</source>
+        <target>%file% へ移動 (%agent%)</target>
+      </trans-unit>
+      <trans-unit id="5">
+        <source>Stop showing agents</source>
+        <target>エージェントを表示しない</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

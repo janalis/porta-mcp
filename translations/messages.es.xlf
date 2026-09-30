@@ -14,6 +14,14 @@
         <source>%count% agents</source>
         <target>%count% agentes</target>
       </trans-unit>
+      <trans-unit id="4">
+        <source>Go to %file% (%agent%)</source>
+        <target>Ir a %file% (%agent%)</target>
+      </trans-unit>
+      <trans-unit id="5">
+        <source>Stop showing agents</source>
+        <target>Dejar de mostrar agentes</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

@@ -16,6 +16,8 @@ use Porta\Tests\Support\Services;
 use Porta\Tests\Support\TempProject;
 use Porta\Tests\Support\UsesBundledPlugins;
 use Porta\Ui\Glyphs;
+use Porta\Workbench\Menu\MenuItem;
+use Porta\Workbench\StatusCell;
 use Symfony\Component\Tui\Terminal\VirtualTerminal;
 use Symfony\Component\Tui\Tui;
 
@@ -104,6 +106,25 @@ final class McpPresenceE2eTest extends TestCase
                 $lifecycle->onPluginSettingChanged('mcp', 'showAgents', true);
                 $this->ok('read_buffer');
                 $this->await(fn (): bool => \str_contains($this->screen($tui, $terminal), 'A.php '.Glyphs::AGENT), what: 'back with the next report');
+
+                // The status cell's menu: go where an agent is, or stop seeing them.
+                $cell = \array_find(
+                    Probe::get($lifecycle, 'plugins')->statusSegments(),
+                    static fn (mixed $segment): bool => $segment instanceof StatusCell && \str_contains($segment->text, Glyphs::AGENT),
+                );
+                $this->assertInstanceOf(StatusCell::class, $cell);
+                $this->assertNotNull($cell->menu);
+                $items = ($cell->menu)();
+                $this->assertSame(['Go to A.php (test)', '', 'Stop showing agents'], \array_map(static fn (MenuItem $item): string => $item->label, $items));
+                $this->ok('edit_buffer', ['path' => 'src/B.php', 'oldText' => '// b', 'newText' => '// b again']);
+                $items = ($cell->menu)();
+                $this->assertNotNull($items[0]->run);
+                ($items[0]->run)();
+                $this->assertSame((string) \realpath($project->path('src/B.php')), $this->json('context')['activeFile'], 'gone to the file the agent is on');
+                $this->assertNotNull($items[2]->run);
+                ($items[2]->run)();
+                $this->await(fn (): bool => !\str_contains($this->screen($tui, $terminal), Glyphs::AGENT), what: 'the marks gone from the menu');
+                $settings->change('mcp', 'showAgents', true);
 
                 $this->assertIsResource($this->client);
                 \fclose($this->client);

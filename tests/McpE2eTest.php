@@ -20,6 +20,8 @@ use Porta\Tests\Support\Services;
 use Porta\Tests\Support\TempProject;
 use Porta\Tests\Support\Toasts;
 use Porta\Tests\Support\UsesBundledPlugins;
+use Porta\Ui\Glyphs;
+use Porta\Widget\CodeEditorWidget;
 use Symfony\Component\Tui\Tui;
 
 /**
@@ -226,6 +228,7 @@ final class McpE2eTest extends TestCase
         $project = new TempProject([
             'src/A.php' => "<?php\nclass A {}\n",
             'src/B.php' => "<?php\nnew A();\n",
+            'src/U.php' => "<?php\n\$é = new A();\n",
             'README.md' => "# hi\n",
             '.porta.json' => \json_encode(
                 [
@@ -263,6 +266,14 @@ final class McpE2eTest extends TestCase
                 );
                 $this->assertStringContainsString('The one class.', $this->ok('hover', ['path' => 'src/A.php', 'line' => 2]));
                 $this->assertSame('The language server has nothing to say about this position', $this->ok('hover', ['path' => 'src/A.php', 'line' => 1]));
+
+                // The agent's caret sits on the character the protocol column
+                // names: `$é =` is four UTF-16 units and five bytes.
+                $this->ok('hover', ['path' => 'src/U.php', 'line' => 2, 'column' => 5]);
+                $this->assertSame(
+                    [1 => [['col' => 5, 'label' => Glyphs::AGENT.' test', 'slot' => 0]]],
+                    Services::resolve($ide, CodeEditorWidget::class)->decorations->remoteCaretsIn((string) \realpath($project->path('src/U.php'))),
+                );
 
                 $symbols = $this->json('symbols', ['query' => 'A']);
                 $this->assertSame(['name' => 'A', 'kind' => 'class', 'path' => $a, 'line' => 2], $symbols[0]);

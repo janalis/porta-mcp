@@ -14,6 +14,14 @@
         <source>%count% agents</source>
         <target>%count% סוכנים</target>
       </trans-unit>
+      <trans-unit id="4">
+        <source>Go to %file% (%agent%)</source>
+        <target>מעבר אל %file% (%agent%)</target>
+      </trans-unit>
+      <trans-unit id="5">
+        <source>Stop showing agents</source>
+        <target>הפסק להציג סוכנים</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

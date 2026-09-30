@@ -11,6 +11,7 @@ use Porta\Plugin\Api\PluginApi;
 use Porta\Plugin\Api\ToolCaller;
 use Porta\Ui\Glyphs;
 use Porta\Workbench\AgentActivityKind;
+use Porta\Workbench\Menu\MenuItem;
 use Porta\Workbench\StatusCell;
 use Porta\Workbench\StatusTone;
 
@@ -28,7 +29,7 @@ use Porta\Workbench\StatusTone;
  */
 final class Presence
 {
-    /** @var array<string, array{name: string, kind: AgentActivityKind, path: string}> caller id => what it did last */
+    /** @var array<string, array{name: string, kind: AgentActivityKind, path: string, line: int}> caller id => what it did last, and where */
     private array $last = [];
 
     /** @var array<string, array<string, true>> caller id => the files it has changed since it connected */
@@ -100,7 +101,30 @@ final class Presence
         $lines = \array_map($this->doing(...), \array_values($this->last));
         $text = 1 === \count($lines) ? $lines[0] : $this->api->trans('%count% agents', ['%count%' => \count($lines)]);
 
-        return new StatusCell(Glyphs::AGENT.' '.$text, StatusTone::Accent, tooltip: \implode("\n", $lines));
+        return new StatusCell(Glyphs::AGENT.' '.$text, StatusTone::Accent, $this->menu(...), \implode("\n", $lines));
+    }
+
+    /**
+     * The cell's menu: the file each agent is at, to go and look — and a way
+     * to stop seeing agents without a trip to the settings.
+     *
+     * @return list<MenuItem>
+     */
+    private function menu(): array
+    {
+        $items = [];
+        foreach ($this->last as $agent) {
+            $items[] = new MenuItem($this->api->trans('Go to %file% (%agent%)', ['%file%' => \basename($agent['path']), '%agent%' => $agent['name']]), '', function () use ($agent): void {
+                $this->api->openFile($agent['path']);
+                if ($agent['line'] >= 0) {
+                    $this->api->jumpTo($agent['line']);
+                }
+            });
+        }
+        $items[] = MenuItem::separator();
+        $items[] = new MenuItem($this->api->trans('Stop showing agents'), '', fn () => $this->api->changeSetting('showAgents', false));
+
+        return $items;
     }
 
     private function report(ToolCaller $caller, string $path, AgentActivityKind $kind, int $line, int $column): void
@@ -108,14 +132,14 @@ final class Presence
         if (!($this->show)()) {
             return;
         }
-        $this->last[$caller->id] = ['name' => $caller->name, 'kind' => $kind, 'path' => $path];
+        $this->last[$caller->id] = ['name' => $caller->name, 'kind' => $kind, 'path' => $path, 'line' => $line];
         // A negative line is the file without a caret: marked on its tab and
         // row, nothing drawn in the text.
         $this->api->emit(new AgentActivity($caller->id, $caller->name, $path, $kind, ($this->cursor)() ? $line : -1, $column, ($this->fade)()));
         $this->api->refreshStatusSegments();
     }
 
-    /** @param array{name: string, kind: AgentActivityKind, path: string} $agent */
+    /** @param array{name: string, kind: AgentActivityKind, path: string, line: int} $agent */
     private function doing(array $agent): string
     {
         $file = \basename($agent['path']);
