@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Porta\McpPlugin\Server;
 
-use Porta\McpPlugin\Protocol\LineFramer;
+use Porta\Support\LineFramer;
 use Porta\Support\NonBlockingWriter;
 use Revolt\EventLoop;
 
