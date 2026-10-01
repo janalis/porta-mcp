@@ -72,4 +72,28 @@ final class LockFileTest extends TestCase
         $this->assertSame($this->dir->path('readonly').' is not writable', new LockFile($this->dir->path('readonly'))->write(1, [], 't'));
         \chmod($this->dir->path('readonly'), permissions: 0o700);
     }
+
+    public function testWhatADeadPortaLeftIsTakenBackAndNothingElse(): void
+    {
+        $dead = \proc_open([\PHP_BINARY, '-r', 'exit;'], [], $pipes);
+        $this->assertIsResource($dead);
+        $gone = \proc_get_status($dead)['pid'];
+        \proc_close($dead);
+        $locks = [
+            'dead-porta' => ['pid' => $gone, 'ideName' => 'Porta'],
+            'live-porta' => ['pid' => \getmypid(), 'ideName' => 'Porta'],
+            'dead-other' => ['pid' => $gone, 'ideName' => 'Visual Studio Code'],
+            'no-pid' => ['ideName' => 'Porta'],
+        ];
+        foreach ($locks as $name => $lock) {
+            $this->dir->write('ide/'.$name.'.lock', (string) \json_encode($lock));
+        }
+        $this->dir->write('ide/garbled.lock', '{');
+
+        new LockFile($this->dir->path('ide'))->sweep();
+
+        $left = \array_map(\basename(...), (array) \glob($this->dir->path('ide/*.lock')));
+        \sort($left);
+        $this->assertSame(['dead-other.lock', 'garbled.lock', 'live-porta.lock', 'no-pid.lock'], $left);
+    }
 }

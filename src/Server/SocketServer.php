@@ -32,6 +32,12 @@ final class SocketServer
 
     private int $next = 0;
 
+    /** Seconds between looks at whether the Porta that serves this project has gone. */
+    public const float RETRY = 5.0;
+
+    /** @var string|null the timer that tries again while another Porta serves the project */
+    private ?string $retry = null;
+
     /** @var array<int, array{stream: resource, watcher: string, writer: NonBlockingWriter, session: Session}> */
     private array $connections = [];
 
@@ -43,6 +49,7 @@ final class SocketServer
         private readonly SocketPath $paths,
         private readonly \Closure $sessions,
         private readonly \Closure $log,
+        private readonly float $retryEvery = self::RETRY,
     ) {}
 
     /** Start listening; the reason when it cannot, null when it is. */
@@ -65,6 +72,13 @@ final class SocketServer
             $peer = @\stream_socket_client('unix://'.$existing, timeout: 0.5);
             if (false !== $peer) {
                 \fclose($peer);
+                // Once that one quits, this one serves: an agent's bridge
+                // must not lose its IDE because the other window closed.
+                $this->retry ??= EventLoop::unreference(EventLoop::repeat($this->retryEvery, function (): void {
+                    if (null === $this->start()) {
+                        ($this->log)('MCP is served from this Porta now');
+                    }
+                }));
 
                 return 'Another Porta is already serving MCP for this project';
             }
@@ -86,6 +100,7 @@ final class SocketServer
             return \sprintf('MCP could not listen at %s: %s', $path, $error);
         }
         \stream_set_blocking($server, enable: false);
+        $this->cancelRetry();
         $this->server = $server;
         $this->path = $path;
         $this->acceptWatcher = EventLoop::unreference(EventLoop::onReadable($server, fn () => $this->accept($server)));
@@ -96,6 +111,7 @@ final class SocketServer
     /** Stop listening and hang up on every client; the socket file goes too. */
     public function stop(): void
     {
+        $this->cancelRetry();
         foreach (\array_keys($this->connections) as $id) {
             $this->drop($id);
         }
@@ -117,6 +133,14 @@ final class SocketServer
         }
         $this->path = null;
         $this->paths->release();
+    }
+
+    private function cancelRetry(): void
+    {
+        if (null !== $this->retry) {
+            EventLoop::cancel($this->retry);
+            $this->retry = null;
+        }
     }
 
     /** Where it listens, or null while it does not. */

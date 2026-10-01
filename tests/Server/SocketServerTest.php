@@ -256,4 +256,55 @@ final class SocketServerTest extends TestCase
         $this->assertTrue(\is_link($path));
         $this->assertSame('precious', \file_get_contents($target));
     }
+
+    public function testOnceTheOwnerQuitsTheOneThatWaitedServes(): void
+    {
+        $paths = new SocketPath($this->project->dir);
+        $owner = new SocketServer($paths, self::sessions(), static fn (string $line): null => null);
+        $this->assertNull($owner->start());
+        $logged = [];
+        $waiting = new SocketServer(
+            $paths,
+            self::sessions(),
+            static function (string $line) use (&$logged): void {
+                $logged[] = $line;
+            },
+            retryEvery: 0.05,
+        );
+
+        try {
+            $this->assertSame('Another Porta is already serving MCP for this project', $waiting->start());
+            $this->pump(0.15);
+            $this->assertNull($waiting->path(), 'not while the owner serves');
+
+            $owner->stop();
+            $this->await(static fn (): bool => null !== $waiting->path(), what: 'the take-over');
+            $this->assertSame(['MCP is served from this Porta now'], $logged);
+            $this->assertIsResource($this->connect((string) $waiting->path()));
+        } finally {
+            $waiting->stop();
+            $owner->stop();
+        }
+    }
+
+    public function testStoppingWhileWaitingStopsTheWait(): void
+    {
+        $paths = new SocketPath($this->project->dir);
+        $owner = new SocketServer($paths, self::sessions(), static fn (string $line): null => null);
+        $this->assertNull($owner->start());
+        $waiting = new SocketServer($paths, self::sessions(), static fn (string $line): null => null, retryEvery: 0.05);
+        $waiting->start();
+
+        $waiting->stop();
+        $owner->stop();
+        $this->pump(0.15);
+
+        $this->assertNull($waiting->path(), 'it gave up waiting when told to stop');
+    }
+
+    /** @return \Closure(\Closure(array<string, mixed>): void): Session sessions with nothing to offer, for a server only connected to */
+    private static function sessions(): \Closure
+    {
+        return static fn (\Closure $send): Session => new Session($send, new ToolCatalog(static fn (): array => [], 'mcp', static fn (): array => []), '1.0');
+    }
 }

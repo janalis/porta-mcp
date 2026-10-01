@@ -70,6 +70,34 @@ final readonly class LockFile
         return null;
     }
 
+    /**
+     * Take back what a Porta that died without stopping — killed, crashed,
+     * powered off — left behind: a lock naming this IDE and a process that
+     * is no more would send the CLI to a port nobody listens on, or someone
+     * else's. Another IDE's locks, and a live Porta's, are left alone.
+     */
+    public function sweep(): void
+    {
+        if (!\function_exists('posix_kill')) {
+            // Without ext-posix there is no asking whether a process lives.
+            // @codeCoverageIgnoreStart
+            return;
+
+            // @codeCoverageIgnoreEnd
+        }
+        $paths = \glob($this->directory.'/*.lock');
+        foreach (false === $paths ? [] : $paths as $path) {
+            /** @var array<string, mixed>|null $lock */
+            $lock = \json_decode((string) \file_get_contents($path), associative: true);
+            $pid = \is_array($lock) && self::IDE_NAME === ($lock['ideName'] ?? null) && \is_int($lock['pid'] ?? null) ? $lock['pid'] : null;
+            // ESRCH alone means gone: EPERM is a live process of another user's.
+            if (null === $pid || \posix_kill($pid, signal: 0) || 3 !== \posix_get_last_error()) {
+                continue;
+            }
+            \unlink($path);
+        }
+    }
+
     public function remove(int $port): void
     {
         if (\is_file($this->path($port))) {

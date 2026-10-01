@@ -401,4 +401,38 @@ final class SessionTest extends TestCase
         $this->assertInstanceOf(\Closure::class, $release);
         $release();
     }
+
+    public function testAClientThatHangsUpHearsNoMoreBeatsNorTheAnswer(): void
+    {
+        $release = null;
+        $session = $this->session(['wait' => self::waiting($release)], heartbeat: 0.01);
+        $session->receive(self::line(['id' => 1, 'method' => 'tools/call', 'params' => ['name' => 'wait', '_meta' => [self::PROGRESS_TOKEN => 7]]]));
+        $this->await(fn (): bool => [] !== $this->sent, what: 'a heartbeat');
+
+        $session->close();
+        $said = \count($this->sent);
+        $this->pump(0.05);
+        $this->assertInstanceOf(\Closure::class, $release);
+        $release();
+        $this->pump(0.02);
+
+        $this->assertCount($said, $this->sent, 'nothing after the hang-up');
+    }
+
+    public function testACancelledCallStopsBeating(): void
+    {
+        $release = null;
+        $session = $this->session(['wait' => self::waiting($release)], heartbeat: 0.01);
+        $session->receive(self::line(['id' => 1, 'method' => 'tools/call', 'params' => ['name' => 'wait', '_meta' => [self::PROGRESS_TOKEN => 7]]]));
+        $this->await(fn (): bool => [] !== $this->sent, what: 'a heartbeat');
+
+        $session->receive(self::line(['method' => 'notifications/cancelled', 'params' => ['requestId' => 1]]));
+        $said = \count($this->sent);
+        $this->pump(0.05);
+
+        $this->assertCount($said, $this->sent, 'no beat for a call nobody wants');
+        $this->assertInstanceOf(\Closure::class, $release);
+        $release();
+        $this->pump(0.02);
+    }
 }

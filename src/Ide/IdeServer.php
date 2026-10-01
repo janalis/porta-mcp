@@ -30,6 +30,9 @@ final class IdeServer
     /** Longer than any real upgrade request; a peer still sending headers past it is not one. */
     private const int MAX_HANDSHAKE = 16_384;
 
+    /** Seconds a client has to present its token before it is hung up on. */
+    public const float HANDSHAKE_TIMEOUT = 10.0;
+
     /** @var resource|null */
     private $server;
 
@@ -44,7 +47,7 @@ final class IdeServer
     /** A client said it is ready to hear from the IDE since {@see takeNewcomer()} was last asked. */
     private bool $newcomer = false;
 
-    /** @var array<int, array{stream: resource, watcher: string, writer: NonBlockingWriter, session: Session|null, frames: WebSocketFrames, handshake: string}> */
+    /** @var array<int, array{stream: resource, watcher: string, writer: NonBlockingWriter, session: Session|null, frames: WebSocketFrames, handshake: string, deadline: string}> */
     private array $connections = [];
 
     /**
@@ -57,6 +60,7 @@ final class IdeServer
         private readonly array $folders,
         private readonly \Closure $sessions,
         private readonly \Closure $log,
+        private readonly float $handshakeTimeout = self::HANDSHAKE_TIMEOUT,
     ) {}
 
     /** Start listening; the reason when it cannot, null when it is. */
@@ -80,6 +84,7 @@ final class IdeServer
         $name = (string) \stream_socket_get_name($server, remote: false);
         $port = (int) \substr($name, (int) \strrpos($name, needle: ':') + 1);
         $token = \bin2hex(\random_bytes(16));
+        $this->lock->sweep();
         $why = $this->lock->write($port, $this->folders, $token);
         if (null !== $why) {
             \fclose($server);
@@ -183,7 +188,17 @@ final class IdeServer
             }
             $this->received($id, $bytes);
         }));
-        $this->connections[$id] = ['stream' => $stream, 'watcher' => $watcher, 'writer' => $writer, 'session' => null, 'frames' => new WebSocketFrames(), 'handshake' => ''];
+        // A client that connects and never says who it is holds a socket for
+        // nothing: it has its time to present the token, and no more.
+        $deadline = EventLoop::unreference(EventLoop::delay($this->handshakeTimeout, function () use ($id): void {
+            // Cancelled when the connection goes, so it is still here.
+            if (null !== $this->connections[$id]['session']) {
+                return;
+            }
+            ($this->log)('Claude Code client dropped: no handshake in time');
+            $this->drop($id);
+        }));
+        $this->connections[$id] = ['stream' => $stream, 'watcher' => $watcher, 'writer' => $writer, 'session' => null, 'frames' => new WebSocketFrames(), 'handshake' => '', 'deadline' => $deadline];
     }
 
     private function received(int $id, string $bytes): void
@@ -203,6 +218,11 @@ final class IdeServer
             return;
         }
         foreach ($messages as [$opcode, $payload]) {
+            // A frame before this one may have cost the connection — its
+            // answer could not be written — and the rest have nobody to go to.
+            if (!\array_key_exists($id, $this->connections)) {
+                return;
+            }
             // The CLI says `ide_connected` once its own handlers are in
             // place — anything the IDE said before that went unheard, so it
             // is the moment to say it again.
@@ -287,6 +307,7 @@ final class IdeServer
         }
         unset($this->connections[$id]);
         EventLoop::cancel($connection['watcher']);
+        EventLoop::cancel($connection['deadline']);
         $connection['writer']->close();
         \fclose($connection['stream']);
         $connection['session']?->close();

@@ -7,6 +7,7 @@ namespace Porta\McpPlugin\Tests\Ide;
 use PHPUnit\Framework\TestCase;
 use Porta\McpPlugin\Ide\IdeServer;
 use Porta\McpPlugin\Ide\LockFile;
+use Porta\McpPlugin\Ide\WebSocketFrames;
 use Porta\McpPlugin\Server\Session;
 use Porta\McpPlugin\Server\ToolCatalog;
 use Porta\McpPlugin\Tests\Support\TalksClaudeCode;
@@ -39,7 +40,7 @@ final class IdeServerTest extends TestCase
         $this->server?->stop();
     }
 
-    private function server(): IdeServer
+    private function server(float $handshakeTimeout = IdeServer::HANDSHAKE_TIMEOUT): IdeServer
     {
         $catalog = new ToolCatalog(
             static fn (): array => [[
@@ -61,6 +62,7 @@ final class IdeServerTest extends TestCase
             function (string $line): void {
                 $this->logged[] = $line;
             },
+            $handshakeTimeout,
         );
     }
 
@@ -122,5 +124,44 @@ final class IdeServerTest extends TestCase
         $this->await($this->cliClosed(...), what: 'the client hung up on');
         $this->assertFalse(\getenv('CLAUDE_CODE_SSE_PORT'));
         $server->stop(); // twice: nothing left to stop
+    }
+
+    public function testAClientThatNeverShakesHandsIsHungUpOn(): void
+    {
+        $server = $this->server(handshakeTimeout: 0.1);
+        $server->start();
+        $silent = \stream_socket_client('tcp://127.0.0.1:'.(int) $server->port(), timeout: 1.0);
+        $this->assertNotFalse($silent);
+
+        $this->await(fn (): bool => [] !== $this->logged, what: 'the deadline');
+
+        $this->assertSame(['Claude Code client dropped: no handshake in time'], $this->logged);
+        \stream_set_blocking($silent, enable: true);
+        $this->assertSame('', \fread($silent, length: 10), 'hung up on');
+        $this->connectCli($this->config->dir);
+        $this->pump(0.2);
+        $this->assertSame(1, $server->clientCount(), 'one that did is kept');
+    }
+
+    public function testAFrameAfterOneThatCostTheConnectionIsLeftUnread(): void
+    {
+        $server = $this->server();
+        $server->start();
+        $this->connectCli($this->config->dir);
+        $this->assertIsResource($this->cli);
+        // An answer past the write queue's cap costs the connection, and a
+        // close right behind it, read in the same batch, has nobody left.
+        $request = self::clientFrame('{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"echo","arguments":{"word":"'.\str_repeat('x', times: 9 * 1_048_576).'"}}}');
+        $writer = new NonBlockingWriter($this->cli, static fn (string $reason): null => null, 64 * 1_048_576);
+        $writer->write($request.self::clientFrame("\x03\xe8", WebSocketFrames::CLOSE));
+
+        try {
+            $this->await(fn (): bool => [] !== $this->logged, what: 'the overflow');
+            $this->pump(0.1);
+        } finally {
+            $writer->close();
+        }
+        $this->assertSame(['Claude Code client dropped: write queue overflow'], $this->logged, 'and nothing threw');
+        $this->assertSame(0, $server->clientCount());
     }
 }

@@ -61,6 +61,9 @@ final class Session
     /** @var array<string, true> calls not yet answered, keyed by {@see key()} — a cancelled one leaves */
     private array $calls = [];
 
+    /** @var array<string, string> the heartbeat of each call still running that asked for one, keyed by {@see key()} */
+    private array $beats = [];
+
     /**
      * @param \Closure(array<string, mixed>): void $send      puts one message on the wire
      * @param float                                $heartbeat seconds between two progress notifications
@@ -86,6 +89,13 @@ final class Session
     /** The client hung up, or the server stopped: whoever keeps track of it is told. */
     public function close(): void
     {
+        // A call still running finishes, but nobody is left to answer or to
+        // tell it is still going: its heartbeat would fire for the life of the IDE.
+        foreach ($this->beats as $beat) {
+            EventLoop::cancel($beat);
+        }
+        $this->beats = [];
+        $this->calls = [];
         if (null !== $this->onClose) {
             ($this->onClose)($this->caller);
         }
@@ -166,7 +176,11 @@ final class Session
         }
         $cancelled = self::validId($params['requestId'] ?? null);
         if ('notifications/cancelled' === $method && null !== $cancelled) {
-            unset($this->calls[self::key($cancelled)]);
+            $key = self::key($cancelled);
+            if (\array_key_exists($key, $this->beats)) {
+                EventLoop::cancel($this->beats[$key]);
+            }
+            unset($this->calls[$key], $this->beats[$key]);
         }
     }
 
@@ -216,11 +230,15 @@ final class Session
         $key = self::key($id);
         $this->calls[$key] = true;
         $heartbeat = $this->heartbeat($params, $name);
+        if (null !== $heartbeat) {
+            $this->beats[$key] = $heartbeat;
+        }
         /** @var array<string, mixed> $arguments */
         $fiber = new \Fiber(function () use ($id, $key, $heartbeat, $handler, $arguments): void {
             $result = $this->answer($handler, $arguments);
             if (null !== $heartbeat) {
                 EventLoop::cancel($heartbeat);
+                unset($this->beats[$key]);
             }
             if (!\array_key_exists($key, $this->calls)) {
                 return; // cancelled: the client no longer wants an answer
