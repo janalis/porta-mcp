@@ -231,4 +231,29 @@ final class SocketServerTest extends TestCase
         $this->assertStringStartsWith('MCP could not listen at /porta-no-such-dir/porta-mcp-', $error);
         $this->assertFileDoesNotExist($paths->pointer(), 'a pointer to nothing would send the bridge astray');
     }
+
+    public function testWhatSitsAtTheSocketPathAndIsNoSocketIsNeverRemoved(): void
+    {
+        $paths = new SocketPath($this->project->dir);
+        $path = $paths->forServer();
+        \file_put_contents($path, data: 'precious');
+
+        $error = $this->server()->start();
+
+        $this->assertSame(\sprintf('MCP could not listen at %s: something that is not a socket is there', $path), $error);
+        $this->assertSame('precious', \file_get_contents($path));
+    }
+
+    public function testASymlinkAtTheSocketPathIsNeverFollowedNorRemoved(): void
+    {
+        $paths = new SocketPath($this->project->dir);
+        $path = $paths->forServer();
+        $target = $this->project->dir.'/target';
+        \file_put_contents($target, data: 'precious');
+        \symlink($target, $path);
+
+        $this->assertIsString($this->server()->start());
+        $this->assertTrue(\is_link($path));
+        $this->assertSame('precious', \file_get_contents($target));
+    }
 }

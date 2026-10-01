@@ -59,4 +59,20 @@ final class SocketPathTest extends TestCase
 
         $this->assertSame($project->dir.'/.porta/mcp.sock', new SocketPath($project->dir)->current());
     }
+
+    /**
+     * The pointer is a file in the project, and a project is something one
+     * clones: a pointer naming anything but a socket of OUR naming would send
+     * the bridge, and the IDE's clean-up of a dead socket, wherever it said.
+     */
+    public function testAPointerNotOfOurNamingIsIgnored(): void
+    {
+        foreach (['/Users/x/somefile', 'porta-mcp-0123456789abcdef.sock', '/t/porta-mcp-0123456789abcdef.sock/../x', '/t/porta-mcp-0123.sock'] as $foreign) {
+            $project = new TempProject(['.porta/mcp.sock.path' => $foreign]);
+
+            $this->assertSame($project->dir.'/.porta/mcp.sock', new SocketPath($project->dir)->current(), $foreign);
+        }
+        $project = new TempProject(['.porta/mcp.sock.path' => "/t/porta-mcp-0123456789abcdef.sock\n"]);
+        $this->assertSame('/t/porta-mcp-0123456789abcdef.sock', new SocketPath($project->dir)->current(), 'ours, from any temp dir');
+    }
 }

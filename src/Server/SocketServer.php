@@ -53,6 +53,11 @@ final class SocketServer
         }
         $existing = $this->paths->current();
         if (\file_exists($existing)) {
+            // Only a socket is ours to replace: a file, a directory or a link
+            // put there — by a cloned project, say — is left exactly as it is.
+            if ('socket' !== \filetype($existing)) {
+                return \sprintf('MCP could not listen at %s: something that is not a socket is there', $existing);
+            }
             // A live peer means another Porta already serves this project, and
             // taking its socket would strand its clients. A refused connect is
             // a crashed one's leftover: that file is ours to replace.

@@ -64,12 +64,19 @@ final readonly class SocketPath
      * Where a running IDE listens, if one does: the pointer's path when there
      * is one, else the default. The bridge connects here, and a starting IDE
      * looks here first for another that already serves the project.
+     *
+     * The pointer is a file in the project, and a project is something one
+     * clones — so only a pointer to a name of OUR making is believed: an
+     * absolute `porta-mcp-<16 hex>.sock`, in whatever temp directory. Anything
+     * else could aim the bridge, or the clean-up of a dead socket, anywhere.
      */
     public function current(): string
     {
         $pointer = \is_file($this->pointer()) ? \trim((string) \file_get_contents($this->pointer())) : '';
 
-        return '' !== $pointer ? $pointer : $this->root.'/.porta/mcp.sock';
+        return 1 === \preg_match('~^/(?:[^/]+/)*porta-mcp-[0-9a-f]{16}\\.sock$~D', $pointer)
+            ? $pointer
+            : $this->root.'/.porta/mcp.sock';
     }
 
     /** The pointer goes with the socket, so a stale one never sends a bridge somewhere empty. */
