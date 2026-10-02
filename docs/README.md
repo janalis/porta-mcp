@@ -37,8 +37,11 @@ changed. `--wait=<seconds>` makes it give up after that long without an IDE.
 
 The IDE listens on a unix socket, `.porta/mcp.sock`, that only your user can
 open. When the project path is too long for a socket, the socket goes in the
-temp directory under a random name, and `.porta/mcp.sock.path` says where. The
-socket is removed when Porta quits or the plugin is disabled.
+temp directory under a random name, and `.porta/mcp.sock.path` says where —
+only a name Porta itself would choose is believed there, and only a socket is
+ever removed. The socket is removed when Porta quits or the plugin is
+disabled. A second Porta on the same project leaves the first one's socket
+alone, and takes over serving MCP once that one quits.
 
 ## Claude Code sees what you have open
 
@@ -85,6 +88,8 @@ your edits first.
 
 Behind the scenes, Porta listens on `127.0.0.1` only, on a port it announces
 in `~/.claude/ide/<port>.lock` (`$CLAUDE_CONFIG_DIR/ide` when that is set).
+A lock a Porta left behind when it was killed is taken back the next time one
+starts, so the CLI is never pointed at a port nobody listens on.
 That file is readable by you alone and holds the token a connection has to
 present. It is removed when Porta quits. The `claudeCode` setting turns all of
 this off.
