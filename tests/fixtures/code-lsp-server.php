@@ -24,8 +24,8 @@ pcntl_async_signals(true);
 pcntl_signal(SIGTERM, SIG_IGN);
 pcntl_alarm(30);
 
-$in = fopen(filename: 'php://stdin', mode: 'rb');
-$out = fopen(filename: 'php://stdout', mode: 'wb');
+$in = \STDIN;
+$out = \STDOUT;
 $root = '';
 
 require dirname(__DIR__, levels: 4).'/tests/Support/lsp-stub.php';
