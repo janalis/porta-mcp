@@ -57,9 +57,10 @@ final class SessionTest extends TestCase
     /** @return array<string, mixed> */
     private function last(): array
     {
-        $this->assertNotSame([], $this->sent, 'the session answered');
+        $last = \array_last($this->sent);
+        $this->assertIsArray($last, 'the session answered');
 
-        return \array_last($this->sent);
+        return $last;
     }
 
     private function assertError(int $code, int|string|null $id = null): void

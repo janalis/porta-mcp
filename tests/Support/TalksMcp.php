@@ -16,6 +16,15 @@ trait TalksMcp
     /** Satisfied by {@see \Porta\Tests\Support\PumpsLoop::await()} on the composing class. */
     abstract private function await(callable $done, float $timeout = 10.0, string $what = 'condition'): void;
 
+    /**
+     * Satisfied by PHPUnit's Assert on the composing class — declared so the
+     * guards below narrow where an analyser reads the trait alone.
+     */
+    abstract public static function fail(string $message = ''): never;
+
+    /** @phpstan-assert resource $actual */
+    abstract public static function assertIsResource(mixed $actual, string $message = ''): void;
+
     /** @var resource|null */
     private $client;
 
@@ -79,6 +88,7 @@ trait TalksMcp
      */
     private function awaitMessage(\Closure $matches, string $what): array
     {
+        $this->assertIsResource($this->client);
         $client = $this->client;
         $found = null;
         $this->await(function () use ($client, $matches, &$found): bool {

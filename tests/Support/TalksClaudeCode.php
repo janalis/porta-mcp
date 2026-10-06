@@ -17,6 +17,15 @@ trait TalksClaudeCode
     /** Satisfied by {@see \Porta\Tests\Support\PumpsLoop::await()} on the composing class. */
     abstract private function await(callable $done, float $timeout = 10.0, string $what = 'condition'): void;
 
+    /**
+     * Satisfied by PHPUnit's Assert on the composing class — declared so the
+     * guards below narrow where an analyser reads the trait alone.
+     */
+    abstract public static function fail(string $message = ''): never;
+
+    /** @phpstan-assert resource $actual */
+    abstract public static function assertIsResource(mixed $actual, string $message = ''): void;
+
     /** @var resource|null */
     private $cli;
 
@@ -197,8 +206,8 @@ trait TalksClaudeCode
     /** Whether the IDE has hung up on the client. */
     private function cliClosed(): bool
     {
-        $this->assertIsResource($this->cli);
         $this->cliPump();
+        $this->assertIsResource($this->cli);
 
         return \feof($this->cli);
     }
