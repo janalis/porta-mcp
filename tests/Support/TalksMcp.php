@@ -26,7 +26,9 @@ trait TalksMcp
     private function connect(TempProject $project): void
     {
         $client = \stream_socket_client('unix://'.$project->path('.porta/mcp.sock'), timeout: 1.0);
-        $this->assertNotFalse($client, 'the plugin listens once the IDE is up');
+        if (false === $client) {
+            self::fail('the plugin listens once the IDE is up');
+        }
         \stream_set_blocking($client, enable: false);
         $this->client = $client;
         $this->request('initialize', ['protocolVersion' => '2025-06-18', 'capabilities' => new \stdClass(), 'clientInfo' => ['name' => 'test', 'version' => '1']]);

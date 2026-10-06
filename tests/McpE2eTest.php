@@ -50,8 +50,8 @@ final class McpE2eTest extends TestCase
     public function testAnAgentReadsNavigatesAndEditsTheIde(): void
     {
         $project = self::project();
-        $a = \realpath($project->path('src/A.php'));
-        $b = \realpath($project->path('src/B.php'));
+        $a = (string) \realpath($project->path('src/A.php'));
+        $b = (string) \realpath($project->path('src/B.php'));
 
         $this->runIde($project, null, [
             100 => function (Tui $tui, $terminal, Ide $ide) use ($project, $a, $b): void {
@@ -180,7 +180,7 @@ final class McpE2eTest extends TestCase
     public function testAnAgentReadsPartOfAFileChangesOnePieceAndSeesTheSelection(): void
     {
         $project = self::project();
-        $a = \realpath($project->path('src/A.php'));
+        $a = (string) \realpath($project->path('src/A.php'));
 
         $this->runIde($project, $project->path('src/A.php'), [
             100 => function (Tui $tui, $terminal, Ide $ide) use ($project, $a): void {

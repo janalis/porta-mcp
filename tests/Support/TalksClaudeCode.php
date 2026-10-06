@@ -47,7 +47,9 @@ trait TalksClaudeCode
     private function upgrade(int $port, string $request): array
     {
         $stream = \stream_socket_client('tcp://127.0.0.1:'.$port, timeout: 1.0);
-        $this->assertNotFalse($stream);
+        if (false === $stream) {
+            self::fail('the IDE server accepts the connection');
+        }
         \stream_set_blocking($stream, enable: false);
         \fwrite($stream, $request);
         $answer = '';
