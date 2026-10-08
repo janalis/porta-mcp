@@ -242,7 +242,7 @@ final class McpWorkspaceE2eTest extends TestCase
                 $focused = $tui->getFocus();
 
                 $this->assertSame(
-                    [['label' => 'Run current file: A.php', 'command' => \PHP_BINARY.' '.(string) \realpath($project->path('src/A.php'))]],
+                    [['label' => 'Run current file: A.php', 'command' => \PHP_BINARY.' '.\realpath($project->path('src/A.php'))]],
                     $this->json('run_configurations'),
                 );
                 $ran = $this->json('run', ['label' => 'Run current file: A.php']);
@@ -252,7 +252,7 @@ final class McpWorkspaceE2eTest extends TestCase
 
                 $tests = $this->json('run_tests', ['path' => 'src', 'filter' => 'testIt']);
                 $this->assertSame(1, $tests['exitCode']);
-                $this->assertStringContainsString('phpunit got: '.(string) \realpath($project->path('src')).' --filter testIt', $tests['output']);
+                $this->assertStringContainsString('phpunit got: '.\realpath($project->path('src')).' --filter testIt', $tests['output']);
                 $this->assertSame($tests['output'], $this->json('run_output', ['label' => 'phpunit'])['output']);
                 $this->assertStringContainsString('phpunit got: ', $this->json('run_tests')['output'], 'all of them');
 
@@ -267,7 +267,7 @@ final class McpWorkspaceE2eTest extends TestCase
                 $waiting = $this->send('tools/call', ['name' => 'run', 'arguments' => ['label' => 'Run current file: Slow.php']]);
                 $replaced = $this->json('run', ['label' => 'Run current file: Slow.php', 'wait' => false]);
                 $this->assertTrue($replaced['running']);
-                $answer = \json_decode($this->answer($waiting)['result']['content'][0]['text'], associative: true);
+                $answer = \json_decode($this->answer($waiting)['result']['content'][0]['text'], associative: true, flags: \JSON_THROW_ON_ERROR);
                 $this->assertSame('Stopped before it finished: the run was replaced or its tab closed', $answer['note']);
 
                 $this->refused('run', ['label' => 'nope'], 'No run configuration "nope" — there are: Run current file: Slow.php');

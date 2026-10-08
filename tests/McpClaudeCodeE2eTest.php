@@ -224,7 +224,7 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $this->cliWrite(\substr($request, offset: 40).self::clientFrame('{"jsonrpc":"2.0","id":7,"method":"ping"}'));
                 $head = '';
                 $this->await(static function () use ($stream, &$head): bool {
-                    $head .= (string) \fread($stream, length: 8192);
+                    $head .= \fread($stream, length: 8192);
 
                     return \str_contains($head, "\r\n\r\n");
                 }, what: 'the split handshake answered');

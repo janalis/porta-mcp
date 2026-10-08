@@ -130,7 +130,7 @@ final class SessionTest extends TestCase
     {
         $this->session()->receive(self::line(['id' => 7, 'method' => 'ping']));
 
-        $this->assertSame('{"jsonrpc":"2.0","id":7,"result":{}}', \json_encode($this->last()));
+        $this->assertSame('{"jsonrpc":"2.0","id":7,"result":{}}', \json_encode($this->last(), \JSON_THROW_ON_ERROR));
     }
 
     public function testToolsListNamesEveryTool(): void

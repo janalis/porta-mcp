@@ -65,7 +65,7 @@ trait TalksClaudeCode
         \fwrite($stream, $request);
         $answer = '';
         $this->await(static function () use ($stream, &$answer): bool {
-            $answer .= (string) \fread($stream, length: 8192);
+            $answer .= \fread($stream, length: 8192);
 
             return \str_contains($answer, "\r\n\r\n") || \feof($stream);
         }, what: 'the upgrade to be answered');
@@ -143,6 +143,7 @@ trait TalksClaudeCode
         $result = $answer['result'];
         $text = $result['content'][0]['text'];
         // @mago-expect analysis:mixed-assignment -- a tool's JSON is untyped; the tests read it by key
+        // @noinspection JsonEncodingApiUsageInspection -- an answer that is not JSON is the text itself, below
         $decoded = \json_decode($text, associative: true);
 
         return [$decoded ?? $text, $result['isError']];

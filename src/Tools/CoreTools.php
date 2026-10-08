@@ -186,7 +186,7 @@ final readonly class CoreTools
         $lines = \explode("\n", $text);
         $first = ($start ?? 1) - 1;
         $last = \min($end ?? \count($lines), \count($lines));
-        if ($first >= \count($lines) || $last <= $first) {
+        if ($last <= $first || $first >= \count($lines)) {
             throw new \InvalidArgumentException(\sprintf('%s has %d lines — lines %d to %d are not among them', $path, \count($lines), $first + 1, $end ?? \count($lines)));
         }
         $slice = \array_slice($lines, $first, $last - $first);

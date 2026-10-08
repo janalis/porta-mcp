@@ -99,7 +99,7 @@ trait TalksMcp
             while (false !== ($end = \strpos($this->received, needle: "\n"))) {
                 $line = \substr($this->received, offset: 0, length: $end);
                 $this->received = \substr($this->received, $end + 1);
-                $message = \json_decode($line, associative: true);
+                $message = \json_decode($line, associative: true, flags: \JSON_THROW_ON_ERROR);
                 if (\is_array($message) && $matches($message)) {
                     $found = $message;
 
@@ -147,7 +147,7 @@ trait TalksMcp
      */
     private function json(string $tool, array $arguments = []): array
     {
-        $decoded = \json_decode($this->ok($tool, $arguments), associative: true);
+        $decoded = \json_decode($this->ok($tool, $arguments), associative: true, flags: \JSON_THROW_ON_ERROR);
         $this->assertIsArray($decoded);
 
         return $decoded;

@@ -181,7 +181,7 @@ final class McpCommandTest extends TestCase
         $this->assertSame(1, $said[0]['id'] ?? null);
         $this->assertSame('2025-06-18', $said[0]['result']['protocolVersion'] ?? null);
         $this->assertSame('notifications/tools/list_changed', $said[1]['method'] ?? null);
-        $replayed = \array_map(static fn (string $line): mixed => \json_decode($line, associative: true), \array_filter(\explode("\n", self::drain($ideEnd))));
+        $replayed = \array_map(static fn (string $line): mixed => \json_decode($line, associative: true, flags: \JSON_THROW_ON_ERROR), \array_filter(\explode("\n", self::drain($ideEnd))));
         $this->assertSame(
             [
                 [

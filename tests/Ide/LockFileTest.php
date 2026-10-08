@@ -51,7 +51,7 @@ final class LockFileTest extends TestCase
         $path = $this->dir->path('cfg/ide/4242.lock');
         $this->assertSame(
             ['pid' => \getmypid(), 'workspaceFolders' => ['/p'], 'ideName' => 'Porta', 'transport' => 'ws', 'authToken' => $token],
-            \json_decode((string) \file_get_contents($path), associative: true),
+            \json_decode((string) \file_get_contents($path), associative: true, flags: \JSON_THROW_ON_ERROR),
         );
         $this->assertSame(0o600, \fileperms($path) & 0o777);
         $this->assertSame(0o700, \fileperms($this->dir->path('cfg/ide')) & 0o777);
@@ -86,7 +86,7 @@ final class LockFileTest extends TestCase
             'no-pid' => ['ideName' => 'Porta'],
         ];
         foreach ($locks as $name => $lock) {
-            $this->dir->write('ide/'.$name.'.lock', (string) \json_encode($lock));
+            $this->dir->write('ide/'.$name.'.lock', (string) \json_encode($lock, \JSON_THROW_ON_ERROR));
         }
         $this->dir->write('ide/garbled.lock', '{');
 

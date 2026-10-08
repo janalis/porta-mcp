@@ -88,6 +88,7 @@ final readonly class LockFile
         $paths = \glob($this->directory.'/*.lock');
         foreach (false === $paths ? [] : $paths as $path) {
             /** @var array<string, mixed>|null $lock */
+            // @noinspection JsonEncodingApiUsageInspection -- a file that is not JSON (hand-edited, half-written) reads as none, it does not throw
             $lock = \json_decode((string) \file_get_contents($path), associative: true);
             $pid = \is_array($lock) && self::IDE_NAME === ($lock['ideName'] ?? null) && \is_int($lock['pid'] ?? null) ? $lock['pid'] : null;
             // ESRCH alone means gone: EPERM is a live process of another user's.

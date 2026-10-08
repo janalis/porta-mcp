@@ -76,7 +76,7 @@ final class ToolCatalogTest extends TestCase
 
         $this->assertSame(
             '{"type":"object","properties":{}}',
-            \json_encode(self::catalog([$tool])->describe()[0]['inputSchema']),
+            \json_encode(self::catalog([$tool])->describe()[0]['inputSchema'], \JSON_THROW_ON_ERROR),
         );
     }
 

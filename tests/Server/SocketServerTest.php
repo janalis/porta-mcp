@@ -87,7 +87,7 @@ final class SocketServerTest extends TestCase
 
             return \str_ends_with($received, "\n");
         }, what: 'an answer from the server');
-        $message = \json_decode(\trim($received), associative: true);
+        $message = \json_decode(\trim($received), associative: true, flags: \JSON_THROW_ON_ERROR);
         $this->assertIsArray($message);
 
         return $message;
