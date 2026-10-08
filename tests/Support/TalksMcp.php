@@ -10,6 +10,8 @@ use Porta\Tests\Support\TempProject;
  * An MCP client for an E2e: connect to the socket the plugin opened in a
  * running IDE, do the handshake, call tools and read what they answered —
  * pumping the loop the IDE runs on while it waits, so the server can answer.
+ *
+ * @noinspection StaticInvocationViaThisInspection -- assertIsResource() is PHPUnit's, redeclared abstract so mago narrows through it; custos cannot see that
  */
 trait TalksMcp
 {

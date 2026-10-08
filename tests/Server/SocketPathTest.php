@@ -42,6 +42,19 @@ final class SocketPathTest extends TestCase
         $server->release(); // already gone: nothing to do
     }
 
+    public function testAPortaDirectoryThatCannotBeMadeLeavesTheDefaultForTheBindToRefuse(): void
+    {
+        // A file holds the name the folder needs, on a root long enough that
+        // the socket would otherwise go to the temp dir behind a pointer.
+        $project = new TempProject();
+        $root = $project->dir.'/'.\str_repeat('deep/', times: 20);
+        \mkdir($root, recursive: true);
+        \file_put_contents($root.'/.porta', data: 'not a folder');
+        $paths = new SocketPath($root, '/t/');
+
+        $this->assertSame($root.'/.porta/mcp.sock', $paths->forServer(), 'no pointer to write, so no temp-dir socket to point at');
+    }
+
     public function testTheCutOffIsTheLongestBindablePath(): void
     {
         $project = new TempProject();

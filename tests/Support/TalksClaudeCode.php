@@ -11,6 +11,8 @@ use Porta\McpPlugin\Ide\WebSocketFrames;
  * lock file, upgrades with the token, speaks MCP in masked text frames and
  * reads the IDE's frames back — pumping the loop the IDE runs on while it
  * waits.
+ *
+ * @noinspection StaticInvocationViaThisInspection -- assertIsResource() is PHPUnit's, redeclared abstract so mago narrows through it; custos cannot see that
  */
 trait TalksClaudeCode
 {

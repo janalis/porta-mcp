@@ -215,7 +215,7 @@ final class Session
     private function call(int|string $id, array $params): void
     {
         $name = \is_string($params['name'] ?? null) ? $params['name'] : null;
-        if (null === $name || null !== ($params['arguments'] ?? null) && !\is_array($params['arguments'])) {
+        if (null === $name || (null !== ($params['arguments'] ?? null) && !\is_array($params['arguments']))) {
             $this->error($id, self::INVALID_PARAMS, 'tools/call takes a tool name and an arguments object');
 
             return;

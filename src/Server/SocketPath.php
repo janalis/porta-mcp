@@ -43,13 +43,16 @@ final readonly class SocketPath
     /**
      * Where the IDE binds, with the pointer written when that is not the
      * default — a fresh name on every call. Creates `.porta/` when the
-     * project has none yet.
+     * project has none yet; when it cannot, the default, whose bind then
+     * fails saying why.
      */
     public function forServer(): string
     {
         $default = $this->root.'/.porta/mcp.sock';
-        if (!\is_dir(\dirname($default))) {
-            \mkdir(\dirname($default), recursive: true);
+        $dir = \dirname($default);
+        // @mago-expect lint:no-error-control-operator -- a folder that cannot be made fails the bind at the default, which says so; the warning would only repeat it
+        if (!\is_dir($dir) && !@\mkdir($dir, recursive: true) && !\is_dir($dir)) {
+            return $default;
         }
         if (\strlen($default) <= self::MAX_LENGTH) {
             return $default;

@@ -30,7 +30,7 @@ final class McpCommandTest extends TestCase
     private function stdin(string $text)
     {
         $file = $this->project->write('stdin', $text);
-        $stream = \fopen($file, mode: 'r');
+        $stream = \fopen($file, mode: 'rb');
         $this->assertIsResource($stream);
 
         return $stream;
@@ -63,7 +63,7 @@ final class McpCommandTest extends TestCase
     {
         [$bridgeEnd, $ideEnd] = \stream_socket_pair(\STREAM_PF_UNIX, \STREAM_SOCK_STREAM, \STREAM_IPPROTO_IP);
         \fwrite($ideEnd, '{"jsonrpc":"2.0","id":1,"result":{}}'."\n");
-        $stdout = \fopen('php://memory', mode: 'w+');
+        $stdout = \fopen('php://memory', mode: 'wb+');
         $this->assertIsResource($stdout);
         $asked = null;
 
@@ -89,7 +89,7 @@ final class McpCommandTest extends TestCase
         [$bridgeEnd, $ideEnd] = \stream_socket_pair(\STREAM_PF_UNIX, \STREAM_SOCK_STREAM, \STREAM_IPPROTO_IP);
         \fclose($ideEnd);
         [$stdinEnd, $clientEnd] = \stream_socket_pair(\STREAM_PF_UNIX, \STREAM_SOCK_STREAM, \STREAM_IPPROTO_IP); // never readable while the client end is held
-        $stdout = \fopen('php://memory', mode: 'w+');
+        $stdout = \fopen('php://memory', mode: 'wb+');
         $this->assertIsResource($stdout);
         $connects = 0;
 
@@ -109,7 +109,7 @@ final class McpCommandTest extends TestCase
 
     public function testWithNoIdeRunningItSaysWhatToDo(): void
     {
-        $stdout = \fopen('php://memory', mode: 'w+');
+        $stdout = \fopen('php://memory', mode: 'wb+');
         $this->assertIsResource($stdout);
 
         $tester = $this->bridge(static fn (string $path): null => null, $this->stdin(''), $stdout, wait: 0);
@@ -125,7 +125,7 @@ final class McpCommandTest extends TestCase
         \mkdir(\dirname($path));
         $server = \stream_socket_server('unix://'.$path);
         $this->assertNotFalse($server);
-        $stdout = \fopen('php://memory', mode: 'w+');
+        $stdout = \fopen('php://memory', mode: 'wb+');
         $this->assertIsResource($stdout);
 
         // No connector: the command connects for real, then the empty stdin
@@ -142,7 +142,7 @@ final class McpCommandTest extends TestCase
     public function testTheRealConnectReportsNoIde(): void
     {
         $application = new Application();
-        $application->addCommand(new McpCommand($this->project->dir, null, $this->stdin(''), \fopen('php://memory', mode: 'w+')));
+        $application->addCommand(new McpCommand($this->project->dir, null, $this->stdin(''), \fopen('php://memory', mode: 'wb+')));
         $tester = new CommandTester($application->find('mcp'));
         $tester->execute(['--wait' => '0'], ['capture_stderr_separately' => true]);
 
@@ -156,7 +156,7 @@ final class McpCommandTest extends TestCase
         \fwrite($clientEnd, self::INITIALIZE."\n".self::INITIALIZED."\n");
         [$bridgeEnd, $ideEnd] = \stream_socket_pair(\STREAM_PF_UNIX, \STREAM_SOCK_STREAM, \STREAM_IPPROTO_IP);
         \fwrite($ideEnd, '{"jsonrpc":"2.0","id":"'.Relay::REPLAY_ID.'","result":{}}'."\n");
-        $stdout = \fopen('php://memory', mode: 'w+');
+        $stdout = \fopen('php://memory', mode: 'wb+');
         $this->assertIsResource($stdout);
         $connects = 0;
 
@@ -205,7 +205,7 @@ final class McpCommandTest extends TestCase
         \fclose($firstIde); // answers the handshake, then quits with the call running
         [$second, $secondIde] = \stream_socket_pair(\STREAM_PF_UNIX, \STREAM_SOCK_STREAM, \STREAM_IPPROTO_IP);
         \fwrite($secondIde, '{"jsonrpc":"2.0","id":"'.Relay::REPLAY_ID.'","result":{}}'."\n");
-        $stdout = \fopen('php://memory', mode: 'w+');
+        $stdout = \fopen('php://memory', mode: 'wb+');
         $this->assertIsResource($stdout);
         $connects = 0;
 

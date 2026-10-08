@@ -186,7 +186,7 @@ final class SocketServer
         $framer = new LineFramer($this->log);
         $watcher = EventLoop::unreference(EventLoop::onReadable($stream, function () use ($id, $stream, $framer, $session): void {
             $bytes = \fread($stream, length: 65_536);
-            if (false === $bytes || '' === $bytes && \feof($stream)) {
+            if (false === $bytes || ('' === $bytes && \feof($stream))) {
                 $this->drop($id);
 
                 return;

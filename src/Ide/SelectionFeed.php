@@ -49,7 +49,7 @@ final class SelectionFeed
         // Someone new has heard nothing yet; and silence past the heartbeat
         // may have been forgotten.
         $due = $server->takeNewcomer() || ++$this->quiet >= self::HEARTBEAT;
-        if (null === $current || 0 === $clients || $current === $this->sent && !$due) {
+        if (null === $current || 0 === $clients || ($current === $this->sent && !$due)) {
             return;
         }
         $this->sent = $current;

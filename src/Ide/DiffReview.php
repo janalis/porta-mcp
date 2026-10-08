@@ -212,7 +212,7 @@ final class DiffReview
      * Hand the proposal to whatever shows two texts side by side
      * ({@see ChangeProposed}): a copy under the file's own name, in a folder
      * of its own, so the comparison is titled with it. The copy, or null
-     * when side by side is off.
+     * when side by side is off or the copy cannot be written.
      */
     private function offer(string $path, string $proposed): ?string
     {
@@ -220,9 +220,15 @@ final class DiffReview
             return null;
         }
         $folder = \sys_get_temp_dir().'/porta-proposal-'.\bin2hex(\random_bytes(6));
-        \mkdir($folder, permissions: 0o700);
         $copy = $folder.'/'.\basename($path);
-        \file_put_contents($copy, $proposed);
+        // @mago-expect lint:no-error-control-operator -- an unwritable temp dir means no comparison, not a warning: the question is asked instead
+        if ((!@\mkdir($folder, permissions: 0o700) && !\is_dir($folder)) || false === \file_put_contents($copy, $proposed)) {
+            // an unwritable temp dir is environmental: the folder's name is fresh
+            // @codeCoverageIgnoreStart
+            return null;
+
+            // @codeCoverageIgnoreEnd
+        }
         $this->api->emit(new ChangeProposed($path, $copy));
 
         return $copy;
