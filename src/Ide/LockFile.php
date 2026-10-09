@@ -49,6 +49,17 @@ final readonly class LockFile
         if (!\is_dir($this->directory) && !@\mkdir($this->directory, permissions: 0o700, recursive: true) && !\is_dir($this->directory)) {
             return \sprintf('%s could not be created', $this->directory);
         }
+
+        return $this->put($port, $folders, $token);
+    }
+
+    /**
+     * {@see write()}, in a directory that is there.
+     *
+     * @param list<string> $folders
+     */
+    private function put(int $port, array $folders, #[\SensitiveParameter] string $token): ?string
+    {
         $json = \json_encode(
             [
                 'pid' => \getmypid(),

@@ -125,32 +125,32 @@ final class Session
         }
         $id = self::validId($message['id'] ?? null);
         $method = \is_string($message['method'] ?? null) ? $message['method'] : null;
-        if (null === $method) {
-            // A response to something this server never asks, or garbage: a
-            // request with no method is the only one of those owed an answer.
-            if (null !== ($message['id'] ?? null) && !\array_key_exists('result', $message) && !\array_key_exists('error', $message)) {
-                $this->error($id, self::INVALID_REQUEST, 'A request needs a method');
-            }
+        match (true) {
+            null === $method => $this->unasked($id, $message),
+            !\array_key_exists('id', $message) => $this->notified($method, \is_array($message['params'] ?? null) ? $message['params'] : []),
+            null === $id => $this->error(null, self::INVALID_REQUEST, 'A request id is a string or an integer'),
+            null !== ($message['params'] ?? null) && !\is_array($message['params']) => $this->error($id, self::INVALID_PARAMS, 'params must be an object'),
+            default => $this->request($id, $method, \is_array($message['params'] ?? null) ? $message['params'] : []),
+        };
+    }
 
-            return;
+    /**
+     * A message with no method: a response to something this server never
+     * asks, or garbage — a request with no method is the only one of those
+     * owed an answer.
+     *
+     * @param array<array-key, mixed> $message
+     */
+    private function unasked(int|string|null $id, array $message): void
+    {
+        if (null !== ($message['id'] ?? null) && !\array_key_exists('result', $message) && !\array_key_exists('error', $message)) {
+            $this->error($id, self::INVALID_REQUEST, 'A request needs a method');
         }
-        if (!\array_key_exists('id', $message)) {
-            $this->notified($method, \is_array($message['params'] ?? null) ? $message['params'] : []);
+    }
 
-            return;
-        }
-        if (null === $id) {
-            $this->error(null, self::INVALID_REQUEST, 'A request id is a string or an integer');
-
-            return;
-        }
-        if (null !== ($message['params'] ?? null) && !\is_array($message['params'])) {
-            $this->error($id, self::INVALID_PARAMS, 'params must be an object');
-
-            return;
-        }
-        $params = \is_array($message['params'] ?? null) ? $message['params'] : [];
-
+    /** @param array<array-key, mixed> $params */
+    private function request(int|string $id, string $method, array $params): void
+    {
         match ($method) {
             'initialize' => $this->result($id, $this->initialize($params)),
             'ping' => $this->result($id, new \stdClass()),
@@ -264,17 +264,31 @@ final class Session
     {
         try {
             $answer = $handler($arguments, $this->caller);
-            if ($answer instanceof TextBlocks) {
-                return ['content' => \array_map(static fn (string $text): array => ['type' => 'text', 'text' => $text], $answer->texts), 'isError' => false];
-            }
-            $text = \is_string($answer)
-                ? $answer
-                : \json_encode($answer, \JSON_THROW_ON_ERROR | \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE | \JSON_INVALID_UTF8_SUBSTITUTE);
+            $result = $answer instanceof TextBlocks
+                ? ['content' => \array_map(static fn (string $text): array => ['type' => 'text', 'text' => $text], $answer->texts), 'isError' => false]
+                : $this->encoded($answer);
         } catch (\Throwable $error) {
             // The tool's failure is the CALLER's to read, not a protocol
             // error: the model sees it and can correct its arguments.
-            return ['content' => [['type' => 'text', 'text' => $error->getMessage()]], 'isError' => true];
+            $result = ['content' => [['type' => 'text', 'text' => $error->getMessage()]], 'isError' => true];
         }
+
+        return $result;
+    }
+
+    /**
+     * A handler's text or value, as the call's result — the value also
+     * structured, when the client reads that.
+     *
+     * @param string|array<array-key, mixed> $answer
+     *
+     * @return array<string, mixed>
+     */
+    private function encoded(string|array $answer): array
+    {
+        $text = \is_string($answer)
+            ? $answer
+            : \json_encode($answer, \JSON_THROW_ON_ERROR | \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE | \JSON_INVALID_UTF8_SUBSTITUTE);
         $result = ['content' => [['type' => 'text', 'text' => $text]], 'isError' => false];
         if ($this->structured && \is_array($answer) && $this->protocol >= self::STRUCTURED_SINCE) {
             $result['structuredContent'] = \array_is_list($answer) ? ['items' => $answer] : $answer;

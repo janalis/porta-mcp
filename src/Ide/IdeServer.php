@@ -66,9 +66,12 @@ final class IdeServer
     /** Start listening; the reason when it cannot, null when it is. */
     public function start(): ?string
     {
-        if (null !== $this->server) {
-            return null;
-        }
+        return null === $this->server ? $this->listen() : null;
+    }
+
+    /** {@see start()}, not listening yet. */
+    private function listen(): ?string
+    {
         $errno = 0;
         $error = '';
         // @mago-expect lint:no-error-control-operator -- a bind failure warns as well as returning false; the message is carried in $error
@@ -81,6 +84,18 @@ final class IdeServer
 
             // @codeCoverageIgnoreEnd
         }
+
+        return $this->announce($server);
+    }
+
+    /**
+     * Say where $server listens — in the lock file the CLI looks for, and to
+     * the processes started from here — and take its connections.
+     *
+     * @param resource $server
+     */
+    private function announce($server): ?string
+    {
         $name = (string) \stream_socket_get_name($server, remote: false);
         $port = (int) \substr($name, (int) \strrpos($name, needle: ':') + 1);
         $token = \bin2hex(\random_bytes(16));
@@ -214,14 +229,13 @@ final class IdeServer
         } catch (\LengthException $tooLarge) {
             ($this->log)('Claude Code client dropped: '.$tooLarge->getMessage());
             $this->drop($id);
-
-            return;
+            $messages = [];
         }
         foreach ($messages as [$opcode, $payload]) {
             // A frame before this one may have cost the connection — its
             // answer could not be written — and the rest have nobody to go to.
             if (!\array_key_exists($id, $this->connections)) {
-                return;
+                break;
             }
             // The CLI says `ide_connected` once its own handlers are in
             // place — anything the IDE said before that went unheard, so it
@@ -246,12 +260,7 @@ final class IdeServer
     {
         $end = \strpos($request, needle: "\r\n\r\n");
         if (false === $end) {
-            if (\strlen($request) > self::MAX_HANDSHAKE) {
-                $this->drop($id);
-
-                return;
-            }
-            $this->connections[$id]['handshake'] = $request;
+            $this->partial($id, $request);
 
             return;
         }
@@ -283,6 +292,17 @@ final class IdeServer
         if ('' !== $rest) {
             $this->received($id, $rest);
         }
+    }
+
+    /** An upgrade request not whole yet: kept for the rest, unless it is already too long to be one. */
+    private function partial(int $id, string $request): void
+    {
+        if (\strlen($request) > self::MAX_HANDSHAKE) {
+            $this->drop($id);
+
+            return;
+        }
+        $this->connections[$id]['handshake'] = $request;
     }
 
     /** The client closed: close back, as the protocol asks, and hang up. */

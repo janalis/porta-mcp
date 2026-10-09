@@ -96,12 +96,15 @@ final class McpCommand extends PluginCommand
         $absent = \sprintf('<error>No Porta is serving MCP for %s.</error> Open the project in Porta with the mcp plugin enabled, then retry.', $root);
         $since = \hrtime(true);
         $told = false;
+        // The client hanging up is the end, unless giving up comes first.
+        $exit = self::SUCCESS;
 
         while (true) {
             if (null === $socket && null !== $wait && ((\hrtime(true) - $since) / 1e9) >= $wait) {
                 $errors->writeln($absent);
+                $exit = self::FAILURE;
 
-                return self::FAILURE;
+                break;
             }
             if (null === $socket && !$told) {
                 $errors->writeln(\sprintf('Waiting for Porta to open %s with the mcp plugin enabled…', $root));
@@ -115,7 +118,9 @@ final class McpCommand extends PluginCommand
             if (false === \stream_select($read, $write, $except, $seconds, $micro)) {
                 // A select interrupted by a signal: not reproducible on demand.
                 // @codeCoverageIgnoreStart
-                return self::FAILURE;
+                $exit = self::FAILURE;
+
+                break;
 
                 // @codeCoverageIgnoreEnd
             }
@@ -151,7 +156,7 @@ final class McpCommand extends PluginCommand
                 }
             }
             if ($ended) {
-                return self::SUCCESS;
+                break;
             }
             if (null === $socket) {
                 $socket = $this->open($paths);
@@ -162,6 +167,8 @@ final class McpCommand extends PluginCommand
                 }
             }
         }
+
+        return $exit;
     }
 
     /** @return resource|null the IDE's socket, when one is listening */

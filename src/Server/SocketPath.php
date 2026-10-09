@@ -51,10 +51,8 @@ final readonly class SocketPath
         $default = $this->root.'/.porta/mcp.sock';
         $dir = \dirname($default);
         // @mago-expect lint:no-error-control-operator -- a folder that cannot be made fails the bind at the default, which says so; the warning would only repeat it
-        if (!\is_dir($dir) && !@\mkdir($dir, recursive: true) && !\is_dir($dir)) {
-            return $default;
-        }
-        if (\strlen($default) <= self::MAX_LENGTH) {
+        $made = \is_dir($dir) || @\mkdir($dir, recursive: true) || \is_dir($dir);
+        if (!$made || \strlen($default) <= self::MAX_LENGTH) {
             return $default;
         }
         $short = \rtrim($this->tempDir, characters: '/').'/porta-mcp-'.\bin2hex(\random_bytes(8)).'.sock';

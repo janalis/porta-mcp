@@ -92,31 +92,41 @@ final class WebSocketFrames
     /** @return array{0: bool, 1: int, 2: string}|null the next whole frame — final bit, opcode, unmasked payload — or null until it has arrived */
     private function next(): ?array
     {
+        $header = $this->header();
+        if (null !== $header && $header[1] > $this->maxMessage) {
+            throw new \LengthException(\sprintf('a frame past %d bytes', $this->maxMessage));
+        }
+
+        return null === $header ? null : $this->payload($header[0], $header[1]);
+    }
+
+    /** @return array{int, int}|null where the next frame's key or payload starts, and the payload's length — null until the buffer has that much */
+    private function header(): ?array
+    {
         if (\strlen($this->buffer) < 2) {
             return null;
         }
+        $short = \ord($this->buffer[1]) & 0x7F;
+        $offset = match ($short) {
+            126 => 4,
+            127 => 10,
+            default => 2,
+        };
+        $length = match (true) {
+            \strlen($this->buffer) < $offset => null,
+            126 === $short => (int) \unpack('n', $this->buffer, offset: 2)[1],
+            127 === $short => (int) \unpack('J', $this->buffer, offset: 2)[1],
+            default => $short,
+        };
+
+        return null === $length ? null : [$offset, $length];
+    }
+
+    /** @return array{0: bool, 1: int, 2: string}|null the frame whose header ends at $offset, taken out of the buffer — null until it has all arrived */
+    private function payload(int $offset, int $length): ?array
+    {
         $first = \ord($this->buffer[0]);
-        $second = \ord($this->buffer[1]);
-        $masked = 0 !== ($second & 0x80);
-        $length = $second & 0x7F;
-        $offset = 2;
-        if (126 === $length) {
-            if (\strlen($this->buffer) < 4) {
-                return null;
-            }
-            $length = (int) \unpack('n', $this->buffer, offset: 2)[1];
-            $offset = 4;
-        }
-        if (127 === $length) {
-            if (\strlen($this->buffer) < 10) {
-                return null;
-            }
-            $length = (int) \unpack('J', $this->buffer, offset: 2)[1];
-            $offset = 10;
-        }
-        if ($length > $this->maxMessage) {
-            throw new \LengthException(\sprintf('a frame past %d bytes', $this->maxMessage));
-        }
+        $masked = 0 !== (\ord($this->buffer[1]) & 0x80);
         $key = $masked ? \substr($this->buffer, $offset, length: 4) : '';
         $offset += $masked ? 4 : 0;
         if (\strlen($this->buffer) < ($offset + $length)) {

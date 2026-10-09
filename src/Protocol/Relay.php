@@ -69,12 +69,17 @@ final class Relay
     {
         $message = self::decode($line);
         $id = self::validId($message['id'] ?? null);
-        if (null === $id || \array_key_exists('method', $message)) {
-            return true;
-        }
-        if (self::REPLAY_ID === $id) {
-            return false;
-        }
+
+        return match (true) {
+            null === $id || \array_key_exists('method', $message) => true,
+            self::REPLAY_ID === $id => false,
+            default => $this->answered($id),
+        };
+    }
+
+    /** The IDE answered request $id: no longer owed. True — the client's to have. */
+    private function answered(int|string $id): bool
+    {
         unset($this->pending[self::key($id)], $this->initializing[self::key($id)]);
 
         return true;
@@ -95,16 +100,17 @@ final class Relay
         if ('notifications/initialized' === $method) {
             $this->initialized = true;
         }
-        if (null === $method || null === $id) {
-            return null;
-        }
 
-        return match ($method) {
-            'initialize' => $this->answerInitialize($id, self::params($message)),
-            'ping' => self::result($id, new \stdClass()),
-            'tools/list' => self::result($id, ['tools' => []]),
-            default => self::error($id, Session::INVALID_REQUEST, $this->absent()),
-        };
+        return (
+            null === $method || null === $id
+                ? null
+                : match ($method) {
+                    'initialize' => $this->answerInitialize($id, self::params($message)),
+                    'ping' => self::result($id, new \stdClass()),
+                    'tools/list' => self::result($id, ['tools' => []]),
+                    default => self::error($id, Session::INVALID_REQUEST, $this->absent()),
+                }
+        );
     }
 
     /**

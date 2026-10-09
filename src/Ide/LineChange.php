@@ -46,9 +46,18 @@ final readonly class LineChange
         }
         $endLine = \count($old) - $tail;
         $added = \array_slice($new, $head, \count($new) - $tail - $head);
-        if ($endLine === $head && [] === $added) {
-            return null;
-        }
+
+        return $endLine === $head && [] === $added ? null : self::spanning($old, $head, $endLine, $added);
+    }
+
+    /**
+     * The edit replacing $old's lines from $head up to $endLine with $added.
+     *
+     * @param list<string> $old
+     * @param list<string> $added
+     */
+    private static function spanning(array $old, int $head, int $endLine, array $added): self
+    {
         $removed = \array_slice($old, $head, $endLine - $head);
         if ($endLine < \count($old)) {
             return new self([$head, 0], [$endLine, 0], [] === $added ? '' : \implode("\n", $added)."\n", $head, $removed, $added);
@@ -57,11 +66,7 @@ final readonly class LineChange
         $before = $head - 1;
         // From the end of the last unchanged line — or from the very start,
         // with none — so its newline goes, or leads the new lines in.
-        // The analyzer reads the head loop as always stepping once; a text
-        // changed from its first line ('old' → 'new') does not, and lands here.
-        // @mago-expect analysis:redundant-comparison,redundant-condition -- $head is 0 when the first line changed; LineChangeTest covers it
         $start = $before >= 0 ? [$before, \strlen($old[$before])] : [0, 0];
-        // @mago-expect analysis:redundant-comparison,redundant-logical-operation -- the same: $before is -1 then
         $lead = $before >= 0 && [] !== $added ? "\n" : '';
 
         return new self($start, [$last, \strlen($old[$last])], $lead.\implode("\n", $added), $head, $removed, $added);

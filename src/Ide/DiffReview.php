@@ -216,9 +216,12 @@ final class DiffReview
      */
     private function offer(string $path, string $proposed): ?string
     {
-        if (!($this->sideBySide)()) {
-            return null;
-        }
+        return ($this->sideBySide)() ? $this->copy($path, $proposed) : null;
+    }
+
+    /** {@see offer()}, side by side being on. */
+    private function copy(string $path, string $proposed): ?string
+    {
         $folder = \sys_get_temp_dir().'/porta-proposal-'.\bin2hex(\random_bytes(6));
         $copy = $folder.'/'.\basename($path);
         // @mago-expect lint:no-error-control-operator -- an unwritable temp dir means no comparison, not a warning: the question is asked instead

@@ -59,31 +59,53 @@ final class SocketServer
             return null;
         }
         $existing = $this->paths->current();
-        if (\file_exists($existing)) {
-            // Only a socket is ours to replace: a file, a directory or a link
-            // put there — by a cloned project, say — is left exactly as it is.
-            if ('socket' !== \filetype($existing)) {
-                return \sprintf('MCP could not listen at %s: something that is not a socket is there', $existing);
-            }
-            // A live peer means another Porta already serves this project, and
-            // taking its socket would strand its clients. A refused connect is
-            // a crashed one's leftover: that file is ours to replace.
-            // @mago-expect lint:no-error-control-operator -- a refused connect warns; the false return is the answer being asked for
-            $peer = @\stream_socket_client('unix://'.$existing, timeout: 0.5);
-            if (false !== $peer) {
-                \fclose($peer);
-                // Once that one quits, this one serves: an agent's bridge
-                // must not lose its IDE because the other window closed.
-                $this->retry ??= EventLoop::unreference(EventLoop::repeat($this->retryEvery, function (): void {
-                    if (null === $this->start()) {
-                        ($this->log)('MCP is served from this Porta now');
-                    }
-                }));
 
-                return 'Another Porta is already serving MCP for this project';
-            }
-            \unlink($existing);
+        return (\file_exists($existing) ? $this->clear($existing) : null) ?? $this->bind();
+    }
+
+    /**
+     * What is at $existing out of the way: null once it is, else why it is not.
+     * Only a socket is ours to replace: a file, a directory or a link put
+     * there — by a cloned project, say — is left exactly as it is.
+     */
+    private function clear(string $existing): ?string
+    {
+        return 'socket' !== \filetype($existing)
+            ? \sprintf('MCP could not listen at %s: something that is not a socket is there', $existing)
+            : $this->takeOver($existing);
+    }
+
+    /**
+     * The socket at $existing replaced, unless a peer listens on it: null once
+     * it is, else why not.
+     */
+    private function takeOver(string $existing): ?string
+    {
+        // A live peer means another Porta already serves this project, and
+        // taking its socket would strand its clients. A refused connect is
+        // a crashed one's leftover: that file is ours to replace.
+        // @mago-expect lint:no-error-control-operator -- a refused connect warns; the false return is the answer being asked for
+        $peer = @\stream_socket_client('unix://'.$existing, timeout: 0.5);
+        if (false !== $peer) {
+            \fclose($peer);
+            // Once that one quits, this one serves: an agent's bridge
+            // must not lose its IDE because the other window closed.
+            $this->retry ??= EventLoop::unreference(EventLoop::repeat($this->retryEvery, function (): void {
+                if (null === $this->start()) {
+                    ($this->log)('MCP is served from this Porta now');
+                }
+            }));
+
+            return 'Another Porta is already serving MCP for this project';
         }
+        \unlink($existing);
+
+        return null;
+    }
+
+    /** Bind the socket and take its connections: null once listening, else why not. */
+    private function bind(): ?string
+    {
         $path = $this->paths->forServer();
         $umask = \umask(0o077);
         try {
