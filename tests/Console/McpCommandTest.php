@@ -64,7 +64,9 @@ final class McpCommandTest extends TestCase
         [$bridgeEnd, $ideEnd] = \stream_socket_pair(\STREAM_PF_UNIX, \STREAM_SOCK_STREAM, \STREAM_IPPROTO_IP);
         \fwrite($ideEnd, '{"jsonrpc":"2.0","id":1,"result":{}}'."\n");
         $stdout = \fopen('php://memory', mode: 'wb+');
-        $this->assertIsResource($stdout);
+        if (false === $stdout) {
+            $this->fail('php://memory did not open');
+        }
         $asked = null;
 
         $tester = $this->bridge(

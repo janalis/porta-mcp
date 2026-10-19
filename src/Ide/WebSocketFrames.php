@@ -112,6 +112,7 @@ final class WebSocketFrames
             127 => 10,
             default => 2,
         };
+        // @custos-ignore UnpackBufferTooShort -- the first arm returns null until the buffer holds the extended length
         $length = match (true) {
             \strlen($this->buffer) < $offset => null,
             126 === $short => (int) \unpack('n', $this->buffer, offset: 2)[1],
