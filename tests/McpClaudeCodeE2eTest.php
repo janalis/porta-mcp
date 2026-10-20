@@ -487,7 +487,7 @@ final class McpClaudeCodeE2eTest extends TestCase
     {
         $this->skipWithoutGit();
         \putenv('PATH='.\PORTA_TEST_PRISTINE_PATH); // the comparison runs git diff --no-index
-        $project = new TempProject(['src/A.php' => "<?php\necho 'as it is';\n", '.porta.json' => '{"enabledPlugins":["mcp","git"]}']);
+        $project = new TempProject(['src/A.php' => "<?php\necho 'as it is';\n", '.porta.json' => '{"enabledPlugins":["mcp","diff","git"]}']);
         $project->initGit();
         $project->commitAll('init');
         $a = (string) \realpath($project->path('src/A.php'));

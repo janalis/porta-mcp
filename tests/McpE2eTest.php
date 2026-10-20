@@ -363,7 +363,7 @@ final class McpE2eTest extends TestCase
     public function testOtherPluginsToolsAreServedAndALiveChangeIsAnnounced(): void
     {
         $this->skipWithoutGit();
-        $project = self::project('{"enabledPlugins":["mcp","git"]}');
+        $project = self::project('{"enabledPlugins":["mcp","diff","git"]}');
         $project->initGit('main');
         $project->commitAll('first');
         $project->write('src/A.php', "<?php\necho 'changed';\n");
