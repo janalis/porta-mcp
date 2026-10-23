@@ -218,9 +218,10 @@ final class McpCommand extends PluginCommand
     private static function put($to, iterable $lines): void
     {
         foreach ($lines as $line) {
-            // An IDE that just went fails the write; its hang-up is read next
-            // turn, and what it owed is answered then.
-            // @mago-expect lint:no-error-control-operator -- a broken pipe is the IDE quitting, handled on the read side
+            // A peer that just went fails the write: the IDE on the socket, or
+            // the agent on our stdout. Its hang-up is read next turn, and what
+            // it owed is answered then.
+            // @mago-expect lint:no-error-control-operator -- a broken pipe is a peer quitting, handled on the read side
             @\fwrite($to, $line."\n");
         }
         \fflush($to);
