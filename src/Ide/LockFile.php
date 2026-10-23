@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Porta\McpPlugin\Ide;
 
+use Porta\Support\JsonFile;
+
 /**
  * How Claude Code finds an IDE: a file per listening IDE in its config
  * directory's `ide/`, named for the port, saying which process, which
@@ -98,10 +100,10 @@ final readonly class LockFile
         }
         $paths = \glob($this->directory.'/*.lock');
         foreach (false === $paths ? [] : $paths as $path) {
-            /** @var array<string, mixed>|null $lock */
-            // @noinspection JsonEncodingApiUsageInspection -- a file that is not JSON (hand-edited, half-written) reads as none, it does not throw
-            $lock = \json_decode((string) \file_get_contents($path), associative: true);
-            $pid = \is_array($lock) && self::IDE_NAME === ($lock['ideName'] ?? null) && \is_int($lock['pid'] ?? null) ? $lock['pid'] : null;
+            // Another program's lock file, hand-edited or half-written: one that
+            // is not JSON reads as none.
+            $lock = JsonFile::read($path);
+            $pid = null !== $lock && self::IDE_NAME === ($lock['ideName'] ?? null) && \is_int($lock['pid'] ?? null) ? $lock['pid'] : null;
             // ESRCH alone means gone: EPERM is a live process of another user's.
             if (null === $pid || \posix_kill($pid, signal: 0) || 3 !== \posix_get_last_error()) {
                 continue;
