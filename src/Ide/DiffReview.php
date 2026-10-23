@@ -69,7 +69,7 @@ final class DiffReview
         $proposed = self::string($arguments, 'new_file_contents') ?? throw new \InvalidArgumentException('new_file_contents is required');
         $tab = self::string($arguments, 'tab_name') ?? $path;
         if (\array_key_exists($tab, $this->pending)) {
-            $this->decide($tab, accept: false); // replaced by this one
+            $this->decide($tab, Verdict::PutBack); // replaced by this one
         }
         $created = !\is_file($path);
         $buffers = $this->api->openBuffers();
@@ -123,13 +123,13 @@ final class DiffReview
     }
 
     /** Settle the oldest proposal still waiting — the keys' way; false when none is. */
-    public function decideOldest(bool $accept): bool
+    public function decideOldest(Verdict $verdict): bool
     {
         $tab = \array_key_first($this->pending);
         if (null === $tab) {
             return false;
         }
-        $this->decide($tab, $accept);
+        $this->decide($tab, $verdict);
 
         return true;
     }
@@ -139,14 +139,13 @@ final class DiffReview
     {
         $count = \count($this->pending);
         foreach (\array_keys($this->pending) as $tab) {
-            $this->decide($tab, accept: false);
+            $this->decide($tab, Verdict::PutBack);
         }
 
         return $count;
     }
 
-    // @mago-expect lint:no-boolean-flag-parameter -- the verdict IS the one fact: keep or put back
-    public function decide(string $tab, bool $accept): void
+    public function decide(string $tab, Verdict $verdict): void
     {
         $proposal = $this->pending[$tab] ?? null;
         if (null === $proposal) {
@@ -156,8 +155,8 @@ final class DiffReview
         $this->api->updateList(self::LIST, []);
         $file = \basename($proposal['path']);
         $this->api->notify(
-            $accept ? $this->api->trans('Kept Claude\'s change to %file%', ['%file%' => $file]) : $this->api->trans('Put %file% back as it was', ['%file%' => $file]),
-            $accept ? ToastSeverity::Success : ToastSeverity::Info,
+            Verdict::Keep === $verdict ? $this->api->trans('Kept Claude\'s change to %file%', ['%file%' => $file]) : $this->api->trans('Put %file% back as it was', ['%file%' => $file]),
+            Verdict::Keep === $verdict ? ToastSeverity::Success : ToastSeverity::Info,
             3.0,
             self::SLOT,
         );
@@ -167,7 +166,7 @@ final class DiffReview
         }
         $buffers = $this->api->openBuffers();
         $path = $proposal['path'];
-        if ($accept) {
+        if (Verdict::Keep === $verdict) {
             if ($proposal['created']) {
                 // Held on disk only while it waited: the CLI writes a new
                 // file only where none is, and this one it never read.
@@ -204,7 +203,7 @@ final class DiffReview
                 'accept' => $this->api->trans('Accept — keep and save'),
                 'reject' => $this->api->trans('Reject — put the old text back'),
             ],
-            fn (string $choice) => $this->decide($tab, 'accept' === $choice),
+            fn (string $choice) => $this->decide($tab, 'accept' === $choice ? Verdict::Keep : Verdict::PutBack),
         );
     }
 

@@ -10,6 +10,7 @@ use Porta\McpPlugin\Ide\IdeServer;
 use Porta\McpPlugin\Ide\IdeTools;
 use Porta\McpPlugin\Ide\LockFile;
 use Porta\McpPlugin\Ide\SelectionFeed;
+use Porta\McpPlugin\Ide\Verdict;
 use Porta\McpPlugin\Server\Session;
 use Porta\McpPlugin\Server\SocketPath;
 use Porta\McpPlugin\Server\SocketServer;
@@ -188,7 +189,7 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
             'accept_claude_change',
             'Accept Claude\'s Change',
             static function () use ($diffs, $nothingWaiting): void {
-                if (!$diffs->decideOldest(accept: true)) {
+                if (!$diffs->decideOldest(Verdict::Keep)) {
                     $nothingWaiting();
                 }
             },
@@ -198,7 +199,7 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
             'reject_claude_change',
             'Reject Claude\'s Change',
             static function () use ($diffs, $nothingWaiting): void {
-                if (!$diffs->decideOldest(accept: false)) {
+                if (!$diffs->decideOldest(Verdict::PutBack)) {
                     $nothingWaiting();
                 }
             },
