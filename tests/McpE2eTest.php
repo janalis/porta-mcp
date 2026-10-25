@@ -84,6 +84,7 @@ final class McpE2eTest extends TestCase
                 $this->assertSame(\realpath($project->dir), \realpath((string) $context['projectRoot']));
                 $this->assertNull($context['activeFile']);
                 $this->assertNull($context['caret']);
+                $this->assertSame([], $context['selectedFiles']);
                 $this->assertSame([], $context['openFiles']);
                 $this->refused('read_buffer', [], 'No file is open');
                 $this->refused('insert_text', ['text' => 'x'], 'No text file is active');
@@ -140,7 +141,8 @@ final class McpE2eTest extends TestCase
                 $this->refused('replace_buffer', [], 'text is required');
 
                 $this->ok('open_file', ['path' => 'src/A.php', 'line' => 1, 'column' => 1]);
-                $this->assertStringContainsString('unsaved', $this->ok('insert_text', ['text' => '// top'."\n"]));
+                $this->assertStringEndsWith(' — unsaved', $inserted = $this->ok('insert_text', ['text' => '// top'."\n"]));
+                $this->assertStringStartsWith('Inserted into /', $inserted, 'naming the file');
                 $this->assertSame("// top\n<?php\necho 'a';\n", $this->ok('read_buffer'));
             },
             300 => function (Tui $tui, $terminal, Ide $ide) use ($a, $b): void {

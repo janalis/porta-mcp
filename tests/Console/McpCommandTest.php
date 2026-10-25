@@ -177,7 +177,7 @@ final class McpCommandTest extends TestCase
 
         $this->assertSame(0, $tester->getStatusCode());
         $this->assertSame(3, $connects, 'it kept trying until the IDE was up');
-        $this->assertStringContainsString('Waiting for Porta to open '.$this->project->dir, $tester->getErrorOutput());
+        $this->assertSame(1, \substr_count($tester->getErrorOutput(), 'Waiting for Porta to open '.$this->project->dir), 'said once, however long it waits');
         $said = self::lines($stdout);
         $this->assertCount(2, $said, 'the handshake answered, then the list changed — not the replay\'s answer');
         $this->assertSame(1, $said[0]['id'] ?? null);
@@ -217,6 +217,9 @@ final class McpCommandTest extends TestCase
                 if (1 === $connects) {
                     return $first;
                 }
+                if (2 === $connects) {
+                    return null; // a moment with no IDE between the two
+                }
                 \fclose($clientEnd);
 
                 return $second;
@@ -233,6 +236,7 @@ final class McpCommandTest extends TestCase
         $this->assertStringContainsString('Porta closed while this call ran', $said[1]['error']['message'] ?? '');
         $this->assertSame('notifications/tools/list_changed', $said[2]['method'] ?? null);
         $this->assertStringContainsString('"id":"'.Relay::REPLAY_ID.'"', self::drain($secondIde), 'the second IDE was handed the handshake');
+        $this->assertSame(1, \substr_count($tester->getErrorOutput(), needle: 'Waiting for Porta'), 'the first IDE going is said once more, as it waits');
     }
 
     private const string INITIALIZE = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}';
@@ -247,8 +251,10 @@ final class McpCommandTest extends TestCase
     private static function lines($stdout): array
     {
         \rewind($stdout);
+        $raw = (string) \stream_get_contents($stdout);
         $lines = [];
-        foreach (\array_filter(\explode("\n", (string) \stream_get_contents($stdout))) as $line) {
+        // Every line a message: a blank one is a line a client cannot parse.
+        foreach ('' === $raw ? [] : \explode("\n", \rtrim($raw, characters: "\n")) as $line) {
             /** @var array<string, mixed> $message */
             $message = \json_decode($line, associative: true, flags: \JSON_THROW_ON_ERROR);
             $lines[] = $message;

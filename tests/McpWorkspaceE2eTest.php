@@ -11,6 +11,7 @@ use Porta\Ide;
 use Porta\LocalHistory\SnapshotStore;
 use Porta\McpPlugin\Tests\Support\TalksMcp;
 use Porta\Run\RunController;
+use Porta\Search\ProjectSearch;
 use Porta\Terminal\TerminalSession;
 use Porta\Tests\Support\ClearsPortaLsp;
 use Porta\Tests\Support\PreservesPath;
@@ -108,6 +109,8 @@ final class McpWorkspaceE2eTest extends TestCase
                 $this->assertSame("<?php\n", \file_get_contents($root.'/src/New/C.php'));
                 $this->awaitPainted($tui, $terminal, 'test editing C.php');
                 $this->refused('create_file', ['path' => 'src/B.php'], 'B.php already exists');
+                $this->ok('replace_buffer', ['path' => 'src/New/C.php', 'text' => "<?php\n// c\n"]);
+                $this->assertSame("<?php\n", $history->read($history->list($root.'/src/New/C.php')[0]['file'] ?? ''), 'a replace keeps the version before it too, newest first');
                 // A file not there yet is judged by its folder's real place: through a link out, refused.
                 $outside = new TempProject([]);
                 \symlink($outside->dir, $project->path('out'));
@@ -126,7 +129,11 @@ final class McpWorkspaceE2eTest extends TestCase
 
                 // A move takes the tab, its unsaved edit and its history along.
                 $this->assertSame(\sprintf('Moved %1$s/src/A.php to %1$s/lib/A2.php', $root), $this->ok('move_file', ['from' => 'src/A.php', 'to' => 'lib/A2.php']));
-                $this->assertSame([['path' => $root.'/lib/A2.php', 'dirty' => true]], $this->json('context')['openFiles']);
+                $this->assertSame(
+                    [['path' => $root.'/src/New/C.php', 'dirty' => true], ['path' => $root.'/lib/A2.php', 'dirty' => true]],
+                    $this->json('context')['openFiles'],
+                    'C, from the replace above, and A under its new name',
+                );
                 $this->awaitPainted($tui, $terminal, 'test editing A2.php');
                 $this->assertStringContainsString('// agent again', $this->ok('read_buffer', ['path' => 'lib/A2.php']));
                 $this->assertCount(1, $history->list($root.'/lib/A2.php'));
@@ -168,6 +175,9 @@ final class McpWorkspaceE2eTest extends TestCase
                     'case-insensitive by default, like the Find in Files box',
                 );
                 $this->assertFalse($found['truncated']);
+                $project->write('lib/Many.txt', \str_repeat("hay\n", times: 600));
+                $many = $this->json('search', ['query' => 'hay']);
+                $this->assertSame([ProjectSearch::MAX_RESULTS, true], [\count($many['matches']), $many['truncated']], 'a full page says there may be more');
                 $this->assertStringContainsString('unsaved edits', $found['note']);
 
                 $this->assertSame(['// Needle two'], \array_column($this->json('search', ['query' => 'Needle', 'caseSensitive' => true])['matches'], 'text'));
@@ -261,7 +271,7 @@ final class McpWorkspaceE2eTest extends TestCase
                 $tests = $this->json('run_tests', ['path' => 'src', 'filter' => 'testIt']);
                 $this->assertSame(1, $tests['exitCode']);
                 $this->assertStringContainsString('phpunit got: '.\realpath($project->path('src')).' --filter testIt', $tests['output']);
-                $this->assertSame($tests['output'], $this->json('run_output', ['label' => 'phpunit'])['output']);
+                $this->assertSame(['label' => 'phpunit', 'output' => $tests['output']], \array_intersect_key($this->json('run_output', ['label' => 'phpunit']), ['label' => 1, 'output' => 1]));
                 $this->assertStringContainsString('phpunit got: ', $this->json('run_tests')['output'], 'all of them');
 
                 $started = $this->json('run_tests', ['wait' => false]);
