@@ -37,6 +37,9 @@ final class WebSocketFramesTest extends TestCase
         $this->assertSame("\x8A\x00", WebSocketFrames::encode('', WebSocketFrames::PONG));
         $this->assertSame("\x81\x7E\x01\x00", \substr(WebSocketFrames::encode(\str_repeat('x', times: 256)), offset: 0, length: 4));
         $this->assertSame("\x81\x7F".\pack('J', 70_000), \substr(WebSocketFrames::encode(\str_repeat('x', times: 70_000)), offset: 0, length: 10));
+        foreach ([125 => "\x81\x7D", 126 => "\x81\x7E\x00\x7E", 65_535 => "\x81\x7E\xFF\xFF", 65_536 => "\x81\x7F".\pack('J', 65_536)] as $length => $head) {
+            $this->assertSame($head, \substr(WebSocketFrames::encode(\str_repeat('x', times: $length)), offset: 0, length: \strlen($head)), "{$length} bytes: each form up to its last length");
+        }
     }
 
     public function testMaskedFramesArriveWholeHoweverTheyAreSplit(): void
@@ -73,6 +76,21 @@ final class WebSocketFramesTest extends TestCase
             ],
             $messages,
         );
+    }
+
+    public function testACloseBetweenFragmentsIsAControlFrameNotAFragment(): void
+    {
+        $frames = new WebSocketFrames();
+
+        $this->assertSame([[WebSocketFrames::CLOSE, "\x03\xE8"]], $frames->feed(self::masked('{"a":', final: false).self::masked("\x03\xE8", WebSocketFrames::CLOSE)));
+    }
+
+    public function testAFrameAndAMessageOfExactlyTheCapAreTaken(): void
+    {
+        $this->assertSame([[WebSocketFrames::TEXT, '0123456789']], new WebSocketFrames(maxMessage: 10)->feed(self::masked('0123456789')));
+
+        $frames = new WebSocketFrames(maxMessage: 10);
+        $this->assertSame([[WebSocketFrames::TEXT, '0123456789']], $frames->feed(self::masked('01234', final: false).self::masked('56789', 0x0)));
     }
 
     public function testAFrameOrAMessagePastTheCapIsRefused(): void

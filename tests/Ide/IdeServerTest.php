@@ -81,7 +81,8 @@ final class IdeServerTest extends TestCase
         $this->assertSame(1, $server->clientCount(), 'the one still sending headers is not a client');
 
         $server->broadcast('selection_changed', ['filePath' => '/p/a.php']);
-        $this->assertSame(['filePath' => '/p/a.php'], $this->cliAwait(static fn (array $m): bool => 'selection_changed' === ($m['method'] ?? null), 'the broadcast')['params']);
+        $broadcast = $this->cliAwait(static fn (array $m): bool => 'selection_changed' === ($m['method'] ?? null), 'the broadcast');
+        $this->assertSame(['jsonrpc' => '2.0', 'method' => 'selection_changed', 'params' => ['filePath' => '/p/a.php']], $broadcast, 'a JSON-RPC notification');
         \stream_set_blocking($half, enable: false);
         $this->assertSame('', (string) \fread($half, length: 100), 'and it heard nothing');
 
@@ -163,5 +164,101 @@ final class IdeServerTest extends TestCase
         }
         $this->assertSame(['Claude Code client dropped: write queue overflow'], $this->logged, 'and nothing threw');
         $this->assertSame(0, $server->clientCount());
+    }
+
+    public function testTheUpgradeAnswersWithTheRfcsAcceptAndNamesMcpAmongTheOffered(): void
+    {
+        $server = $this->server();
+        $server->start();
+        $port = (int) $server->port();
+
+        [, $answer] = $this->upgrade($port, self::upgradeRequest($port, $this->lock($this->config->dir)['token'], "Sec-WebSocket-Protocol: chat, mcp\r\nA line with no colon\r\n"));
+
+        $this->assertStringStartsWith('HTTP/1.1 101', $answer);
+        $this->assertStringContainsString("\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n", $answer, 'the RFC\'s own example key, answered');
+        $this->assertStringEndsWith("\r\nSec-WebSocket-Protocol: mcp\r\n\r\n", $answer, 'mcp, found after a comma and a space');
+    }
+
+    public function testAWrongTokenIsRefusedAndHungUpOn(): void
+    {
+        $server = $this->server();
+        $server->start();
+        $port = (int) $server->port();
+
+        [$this->cli, $answer] = $this->upgrade($port, self::upgradeRequest($port, 'wrong'));
+        $this->cliFrames = new WebSocketFrames();
+
+        $this->assertStringStartsWith('HTTP/1.1 401', $answer);
+        $this->await($this->cliClosed(...), timeout: 2.0, what: 'the refused one hung up on — at once, not at the deadline');
+        $this->assertSame(0, $server->clientCount());
+    }
+
+    public function testAHandshakeInPiecesIsJoinedAndOnePastTheCapIsHungUpOnAtOnce(): void
+    {
+        $server = $this->server();
+        $server->start();
+        $port = (int) $server->port();
+        $request = self::upgradeRequest($port, $this->lock($this->config->dir)['token']);
+        $stream = \stream_socket_client('tcp://127.0.0.1:'.$port, timeout: 1.0);
+        $this->assertNotFalse($stream);
+        \fwrite($stream, \substr($request, offset: 0, length: 40));
+        // A turn of the loop, so the server reads the first piece alone.
+        $this->pump(0.05);
+        \fwrite($stream, \substr($request, offset: 40));
+        $this->await(static fn (): bool => 1 === $server->clientCount(), what: 'the joined handshake');
+
+        [$this->cli] = $this->upgrade($port, \str_repeat('X', times: 20_000));
+        $this->cliFrames = new WebSocketFrames();
+        // Well inside the ten seconds a silent client gets: the cap, not the deadline.
+        $this->await($this->cliClosed(...), timeout: 2.0, what: 'the endless headers hung up on');
+        $this->assertSame([], $this->logged, 'by the cap, which says nothing');
+    }
+
+    public function testIdeConnectedMakesANewcomerOnceAndOnlyAsAMessage(): void
+    {
+        $server = $this->server();
+        $server->start();
+        $this->connectCli($this->config->dir);
+        $this->assertFalse($server->takeNewcomer(), 'shaking hands is not saying ide_connected');
+
+        $this->cliWrite(self::clientFrame('{"method":"ide_connected"}', WebSocketFrames::PING));
+        $this->assertSame('{"method":"ide_connected"}', $this->cliAwaitFrame(WebSocketFrames::PONG, 'the pong'));
+        $this->assertFalse($server->takeNewcomer(), 'a ping that says it is no message');
+
+        $this->cliNotify('ide_connected', ['pid' => 1]);
+        $taken = false;
+        $this->await(static function () use ($server, &$taken): bool {
+            return $taken = $server->takeNewcomer();
+        }, what: 'the newcomer');
+        $this->assertTrue($taken);
+        $this->assertFalse($server->takeNewcomer(), 'taken once');
+    }
+
+    public function testAFramePastTheCapIsLoggedAndHungUpOn(): void
+    {
+        $server = $this->server();
+        $server->start();
+        $this->connectCli($this->config->dir);
+
+        $this->cliWrite("\x81\xFF".\pack('J', 20_000_000).'mask');
+
+        $this->await($this->cliClosed(...), what: 'hung up on');
+        $this->assertSame(['Claude Code client dropped: a frame past 16777216 bytes'], $this->logged);
+    }
+
+    public function testAClientGoneBeforeItsDeadlineLeavesNoDeadlineBehind(): void
+    {
+        $server = $this->server(handshakeTimeout: 0.2);
+        $server->start();
+        $gone = \stream_socket_client('tcp://127.0.0.1:'.(int) $server->port(), timeout: 1.0);
+        $silent = \stream_socket_client('tcp://127.0.0.1:'.(int) $server->port(), timeout: 1.0);
+        $this->assertNotFalse($gone);
+        $this->assertNotFalse($silent);
+        \fclose($gone);
+
+        $this->await(fn (): bool => [] !== $this->logged, what: 'the silent one\'s deadline');
+        $this->pump(0.05);
+
+        $this->assertSame(['Claude Code client dropped: no handshake in time'], $this->logged, 'the one that left had its deadline taken with it');
     }
 }

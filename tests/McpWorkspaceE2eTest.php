@@ -106,7 +106,14 @@ final class McpWorkspaceE2eTest extends TestCase
 
                 $this->assertSame('Created '.$root.'/src/New/C.php', $this->ok('create_file', ['path' => 'src/New/C.php', 'text' => "<?php\n"]));
                 $this->assertSame("<?php\n", \file_get_contents($root.'/src/New/C.php'));
+                $this->awaitPainted($tui, $terminal, 'test editing C.php');
                 $this->refused('create_file', ['path' => 'src/B.php'], 'B.php already exists');
+                // A file not there yet is judged by its folder's real place: through a link out, refused.
+                $outside = new TempProject([]);
+                \symlink($outside->dir, $project->path('out'));
+                $this->refused('create_file', ['path' => 'out/escaped.php', 'text' => 'x'], 'out/escaped.php is outside the project');
+                $this->assertFileDoesNotExist($outside->path('escaped.php'));
+                \unlink($project->path('out'));
 
                 // The first edit keeps the version before it.
                 $this->ok('edit_buffer', ['oldText' => '// needle one', 'newText' => '// agent']);
@@ -120,6 +127,7 @@ final class McpWorkspaceE2eTest extends TestCase
                 // A move takes the tab, its unsaved edit and its history along.
                 $this->assertSame(\sprintf('Moved %1$s/src/A.php to %1$s/lib/A2.php', $root), $this->ok('move_file', ['from' => 'src/A.php', 'to' => 'lib/A2.php']));
                 $this->assertSame([['path' => $root.'/lib/A2.php', 'dirty' => true]], $this->json('context')['openFiles']);
+                $this->awaitPainted($tui, $terminal, 'test editing A2.php');
                 $this->assertStringContainsString('// agent again', $this->ok('read_buffer', ['path' => 'lib/A2.php']));
                 $this->assertCount(1, $history->list($root.'/lib/A2.php'));
                 $this->refused('move_file', ['from' => 'nowhere.php', 'to' => 'x.php'], 'is not there to rename');

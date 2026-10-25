@@ -31,7 +31,7 @@ final readonly class Arguments
     }
 
     /** A path argument by name, absolute and inside the project, or null when it was not given. */
-    public function pathAt(string $key): ?string
+    private function pathAt(string $key): ?string
     {
         if (null === ($this->arguments[$key] ?? null) || '' === $this->arguments[$key]) {
             return null;

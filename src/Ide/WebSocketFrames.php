@@ -136,8 +136,7 @@ final class WebSocketFrames
         $payload = \substr($this->buffer, $offset, $length);
         $this->buffer = \substr($this->buffer, $offset + $length);
         if ($masked) {
-            $payload ^= \str_repeat($key, times: \max(1, \intdiv($length + 3, num2: 4)));
-            $payload = \substr($payload, offset: 0, length: $length);
+            $payload ^= \str_pad('', $length, $key); // the key, repeated to the payload's length
         }
 
         return [0 !== ($first & 0x80), $first & 0x0F, $payload];
