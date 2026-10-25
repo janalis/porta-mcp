@@ -32,6 +32,9 @@ final class LineChangeTest extends TestCase
         yield 'everything, from the first line' => ['old', 'new', 0];
         yield 'an empty text filled' => ['', "<?php\n", 0];
         yield 'lines removed before the final newline' => ["<?php\n// one\n// two\n", "<?php\n", 1];
+        // The same line on both ends: what matched at the head is not matched again at the tail.
+        yield 'a line repeated after itself' => ['a', "a\na", 1];
+        yield 'a repeated line taken away' => ["a\na", 'a', 1];
     }
 
     #[DataProvider('changes')]
@@ -47,6 +50,7 @@ final class LineChangeTest extends TestCase
     public function testTheSameTextIsNoEdit(): void
     {
         $this->assertNull(LineChange::between("a\nb\n", "a\nb\n"));
+        $this->assertSame([0, 0], LineChange::between('old', 'new')?->start, 'all of it: from the very start, never a line before the first');
     }
 
     public function testOnlyTheChangedLinesAreInTheEdit(): void

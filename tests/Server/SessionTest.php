@@ -6,6 +6,7 @@ namespace Porta\McpPlugin\Tests\Server;
 
 use PHPUnit\Framework\TestCase;
 use Porta\McpPlugin\Server\Session;
+use Porta\McpPlugin\Server\TextBlocks;
 use Porta\McpPlugin\Server\ToolCatalog;
 use Porta\Plugin\Api\ToolCaller;
 use Porta\Tests\Support\PumpsLoop;
@@ -66,6 +67,7 @@ final class SessionTest extends TestCase
     private function assertError(int $code, int|string|null $id = null): void
     {
         $answer = $this->last();
+        $this->assertSame('2.0', $answer['jsonrpc'] ?? null);
         $this->assertSame($id, $answer['id']);
         $this->assertIsArray($answer['error']);
         $this->assertSame($code, $answer['error']['code']);
@@ -189,6 +191,21 @@ final class SessionTest extends TestCase
         $this->assertArrayNotHasKey('structuredContent', $this->last()['result']);
     }
 
+    public function testTextBlocksAreEachTheirOwnTextAndAValueKeepsItsLettersAndSurvivesBadBytes(): void
+    {
+        $session = $this->session([
+            'blocks' => static fn (array $arguments): TextBlocks => new TextBlocks(['FILE_SAVED', 'body']),
+            'letters' => static fn (array $arguments): array => ['name' => 'Ünïcode', 'bad' => "x\xC3"],
+        ]);
+
+        $session->receive(self::line(['id' => 1, 'method' => 'tools/call', 'params' => ['name' => 'blocks']]));
+        $this->assertSame(['content' => [['type' => 'text', 'text' => 'FILE_SAVED'], ['type' => 'text', 'text' => 'body']], 'isError' => false], $this->last()['result']);
+
+        $session->receive(self::line(['id' => 2, 'method' => 'tools/call', 'params' => ['name' => 'letters']]));
+        $this->assertFalse($this->last()['result']['isError'] ?? null, 'a bad byte is replaced, not an error');
+        $this->assertStringContainsString('"name": "Ünïcode"', $this->last()['result']['content'][0]['text'] ?? '');
+    }
+
     public function testAnAnswerThatCannotBeEncodedIsTheCallersError(): void
     {
         $session = $this->session(['nan' => static fn (array $arguments): array => ['value' => \NAN]]);
@@ -260,6 +277,7 @@ final class SessionTest extends TestCase
         $this->session()->receive(self::line(['id' => 11, 'method' => 'resources/list']));
 
         $this->assertError(Session::METHOD_NOT_FOUND, 11);
+        $this->assertSame('Method not found: resources/list', $this->last()['error']['message'] ?? null);
     }
 
     public function testMalformedJsonIsAParseErrorWithANullId(): void

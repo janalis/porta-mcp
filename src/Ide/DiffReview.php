@@ -145,7 +145,7 @@ final class DiffReview
         return $count;
     }
 
-    public function decide(string $tab, Verdict $verdict): void
+    private function decide(string $tab, Verdict $verdict): void
     {
         $proposal = $this->pending[$tab] ?? null;
         if (null === $proposal) {

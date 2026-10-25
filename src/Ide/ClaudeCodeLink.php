@@ -52,8 +52,7 @@ final class ClaudeCodeLink
     public function mention(): int
     {
         $current = $this->selection->current();
-        $clients = $this->server->clientCount();
-        if (null === $current || 0 === $clients) {
+        if (null === $current) {
             return 0;
         }
         $mention = ['filePath' => $current['filePath']];
@@ -64,8 +63,8 @@ final class ClaudeCodeLink
             // line: Shift+Down over two lines names those two, not three.
             $mention['lineEnd'] = 0 === $end['character'] ? $end['line'] - 1 : $end['line'];
         }
-        $this->server->broadcast('at_mentioned', $mention);
+        $this->server->broadcast('at_mentioned', $mention); // to nobody, with none connected
 
-        return $clients;
+        return $this->server->clientCount();
     }
 }

@@ -36,7 +36,7 @@ final class RelayTest extends TestCase
 
         $answer = self::decode($relay->offline(self::line(['id' => 1, 'method' => 'initialize', 'params' => ['protocolVersion' => '2025-03-26']])));
 
-        $this->assertSame(1, $answer['id']);
+        $this->assertSame(['2.0', 1], [$answer['jsonrpc'] ?? null, $answer['id']]);
         $this->assertSame(
             [
                 'protocolVersion' => '2025-03-26',
@@ -65,6 +65,8 @@ final class RelayTest extends TestCase
         $answer = self::decode($relay->offline(self::line(['id' => 3, 'method' => 'tools/call', 'params' => ['name' => 'context']])));
 
         $this->assertSame(['code' => Session::INVALID_REQUEST, 'message' => $relay->absent()], $answer['error']);
+        $this->assertSame('2.0', $answer['jsonrpc'] ?? null);
+        $this->assertNull($relay->offline(self::line(['id' => 1.5, 'method' => 'tools/call'])), 'an id neither number nor string: a notification');
         $this->assertNull($relay->offline(self::line(['method' => 'notifications/cancelled'])), 'a notification is owed nothing');
         $this->assertSame(['code' => Session::PARSE_ERROR, 'message' => 'Parse error'], self::decode($relay->offline('{nope'))['error']);
     }
@@ -131,5 +133,19 @@ final class RelayTest extends TestCase
 
         $this->assertSame(7, $owed[0]['id']);
         $this->assertSame('2025-06-18', $owed[0]['result']['protocolVersion'] ?? null);
+    }
+
+    public function testOnlyTheClientsOwnInitializedIsReplayedAndEveryOwedCallIsAnswered(): void
+    {
+        $relay = $this->relay();
+        $relay->toIde(self::line(['id' => 1, 'method' => 'initialize', 'params' => ['protocolVersion' => '2025-06-18']]));
+        $relay->toIde(self::line(['id' => 2, 'method' => 'tools/call']));
+        $relay->toIde(self::line(['id' => 3, 'method' => 'tools/call']));
+
+        $owed = \array_map(self::decode(...), $relay->lost());
+
+        $this->assertSame([1, 2, 3], \array_column($owed, 'id'));
+        $this->assertSame(['2.0', '2.0', '2.0'], \array_column($owed, 'jsonrpc'));
+        $this->assertCount(1, $relay->resume()['ide'], 'no initialized went to the IDE, so none is replayed');
     }
 }

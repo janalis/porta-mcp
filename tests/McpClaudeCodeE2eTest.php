@@ -9,6 +9,8 @@ use Porta\Config\CommandRegistry;
 use Porta\Editor\BufferManager;
 use Porta\Editor\BufferService;
 use Porta\Editor\DiagnosticSeverity;
+use Porta\Editor\OpenFocus;
+use Porta\Event\AgentEditing;
 use Porta\Event\ChangeProposed;
 use Porta\Ide;
 use Porta\Lsp\Uri;
@@ -27,6 +29,7 @@ use Porta\Tests\Support\Toasts;
 use Porta\Tests\Support\UsesBundledPlugins;
 use Porta\Ui\Glyphs;
 use Porta\Widget\CodeEditorWidget;
+use Porta\Widget\ResultsPanelWidget;
 use Porta\Workbench\View\ViewRegistry;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\Tui\Terminal\VirtualTerminal;
@@ -67,7 +70,7 @@ final class McpClaudeCodeE2eTest extends TestCase
     private static function project(): TempProject
     {
         return new TempProject([
-            'src/A.php' => "<?php\n// a\necho 'a';\n",
+            'src/A.php' => "<?php\né // a\necho 'a';\n",
             'src/B.php' => "<?php\n// second\n",
             '.porta.json' => '{"enabledPlugins":["mcp"]}',
         ]);
@@ -126,6 +129,7 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $this->assertFalse($this->cliCall('checkDocumentDirty', ['filePath' => $root.'/src/B.php'])[0]['success'], 'not open');
                 $this->assertTrue($this->cliCall('saveDocument', ['filePath' => $a])[0]['success'], 'nothing to save is saved');
                 $this->assertFalse($this->cliCall('saveDocument', ['filePath' => $root.'/src/B.php'])[0]['success']);
+
                 $this->assertSame([[], false], $this->cliCall('getDiagnostics', ['uri' => 'file://'.$a]));
                 $this->assertArrayNotHasKey(
                     'structuredContent',
@@ -311,6 +315,111 @@ final class McpClaudeCodeE2eTest extends TestCase
         return \array_column($answer['result']['content'], 'text');
     }
 
+    public function testEachToolSaysWhatItTakes(): void
+    {
+        $project = self::project();
+
+        $this->runIde($project, $project->path('src/A.php'), [
+            100 => function (): void {
+                $this->connectCli($this->config->dir);
+                // What each tool takes, as the CLI reads it from tools/list.
+                $file = ['type' => 'object', 'properties' => ['filePath' => ['type' => 'string']], 'required' => ['filePath']];
+                $none = ['type' => 'object', 'properties' => []];
+                $this->assertSame(
+                    [
+                        'openFile' => [
+                            'type' => 'object',
+                            'properties' => [
+                                'filePath' => ['type' => 'string'],
+                                'preview' => ['type' => 'boolean'],
+                                'startText' => ['type' => 'string'],
+                                'endText' => ['type' => 'string'],
+                                'selectToEndOfLine' => ['type' => 'boolean'],
+                                'makeFrontmost' => ['type' => 'boolean'],
+                            ],
+                            'required' => ['filePath'],
+                        ],
+                        'getCurrentSelection' => $none,
+                        'getLatestSelection' => $none,
+                        'getOpenEditors' => $none,
+                        'getWorkspaceFolders' => $none,
+                        'getDiagnostics' => ['type' => 'object', 'properties' => ['uri' => ['type' => 'string']]],
+                        'checkDocumentDirty' => $file,
+                        'saveDocument' => $file,
+                        'openDiff' => [
+                            'type' => 'object',
+                            'properties' => [
+                                'old_file_path' => ['type' => 'string'],
+                                'new_file_path' => ['type' => 'string'],
+                                'new_file_contents' => ['type' => 'string'],
+                                'tab_name' => ['type' => 'string'],
+                            ],
+                            'required' => ['old_file_path', 'new_file_path', 'new_file_contents', 'tab_name'],
+                        ],
+                        'close_tab' => ['type' => 'object', 'properties' => ['tab_name' => ['type' => 'string']]],
+                        'closeAllDiffTabs' => $none,
+                    ],
+                    \array_column($this->cliRequest('tools/list')['result']['tools'], 'inputSchema', 'name'),
+                );
+            },
+        ]);
+    }
+
+    public function testASelectionCountsUtf16UnitsAndAnOpenWithNoTextKeepsTheCaret(): void
+    {
+        $project = self::project();
+        $root = (string) \realpath($project->dir);
+
+        $this->runIde($project, $project->path('src/A.php'), [
+            100 => function (Tui $tui, $terminal, Ide $ide) use ($root): void {
+                $this->connectCli($this->config->dir);
+                $tui->handleInput("\x1b[1;2B"); // shift+down, then shift+right: past the é
+                $tui->handleInput("\x1b[1;2C");
+                $across = $this->cliAwait(static fn (array $m): bool => self::isSelection($m, 'src/A.php') && 1 === ($m['params']['selection']['end']['line'] ?? null), 'the selection past the é');
+                $this->assertSame(['line' => 1, 'character' => 1], $across['params']['selection']['end'], 'é is two bytes and one UTF-16 unit');
+                $this->assertSame("<?php\né", $across['params']['text']);
+
+                $this->cliCall('openFile', ['filePath' => $root.'/src/B.php', 'startText' => 'second']);
+                $this->cliCall('openFile', ['filePath' => $root.'/src/B.php']);
+                $this->assertSame(1, Services::resolve($ide, BufferManager::class)->get($root.'/src/B.php')?->document->cursorLine, 'no text named: the caret stays where it is');
+            },
+        ]);
+    }
+
+    public function testDiagnosticsAreEveryFilesOrTheOneAskedAbout(): void
+    {
+        $project = self::project();
+        $root = (string) \realpath($project->dir);
+        $a = $root.'/src/A.php';
+
+        $this->runIde($project, $project->path('src/A.php'), [
+            100 => function (Tui $tui, $terminal, Ide $ide) use ($root, $a): void {
+                $this->connectCli($this->config->dir);
+                $this->assertSame(
+                    [['success' => false, 'message' => 'Document not open: '.$root.'/src/B.php'], false],
+                    $this->cliCall('checkDocumentDirty', ['filePath' => $root.'/src/B.php']),
+                    'not open',
+                );
+                $this->assertSame(
+                    [['success' => true, 'filePath' => $a, 'saved' => true, 'message' => 'Document saved successfully'], false],
+                    $this->cliCall('saveDocument', ['filePath' => $a]),
+                    'nothing to save is saved',
+                );
+                $unsaved = $this->cliCall('saveDocument', ['filePath' => $root.'/src/B.php'])[0];
+                $this->assertSame([false, false], [$unsaved['success'], $unsaved['saved']]);
+                Services::resolve($ide, BufferService::class)->applyDiagnostics(Uri::fromPath($a), [0 => [['severity' => DiagnosticSeverity::Error, 'message' => 'Boom', 'col' => 0]]], 'test');
+                Services::resolve($ide, BufferService::class)->openFile($root.'/src/B.php', OpenFocus::Background);
+                Services::resolve($ide, BufferService::class)->applyDiagnostics(
+                    Uri::fromPath($root.'/src/B.php'),
+                    [1 => [['severity' => DiagnosticSeverity::Hint, 'message' => 'Note', 'col' => 0]]],
+                    'test',
+                );
+                $this->assertSame(['file://'.$a, 'file://'.$root.'/src/B.php'], \array_column($this->cliCall('getDiagnostics')[0], 'uri'), 'each file with some');
+                $this->assertSame(['file://'.$a], \array_column($this->cliCall('getDiagnostics', ['uri' => 'file://'.$a])[0], 'uri'), 'the one asked about, alone');
+            },
+        ]);
+    }
+
     public function testAProposedChangeIsShownInTheFileAndWaitsForTheUsersVerdict(): void
     {
         $project = new TempProject([
@@ -331,6 +440,7 @@ final class McpClaudeCodeE2eTest extends TestCase
                 });
                 $this->assertSame(['new_file_path is required', true], $this->cliCall('openDiff'));
                 $this->assertSame(['new_file_contents is required', true], $this->cliCall('openDiff', ['new_file_path' => $a]));
+                $this->assertSame(['new_file_contents is required', true], $this->cliCall('openDiff', ['old_file_path' => $a]), 'the old path stands in for a missing new one');
                 $this->assertTrue(
                     $this->cliCall('openDiff', ['new_file_path' => $a.'/inside/a/file.php', 'new_file_contents' => 'x', 'tab_name' => 'x'])[1],
                     'a file that cannot be made is the caller\'s error',
@@ -393,6 +503,7 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $terminal->clearOutput();
                 Services::resolve($ide, CommandRegistry::class)->run('mcp:review_claude_change');
                 $this->awaitPainted($tui, $terminal, 'Accept — keep and save');
+                $this->assertNotContains('No change from Claude is waiting', Toasts::all($ide), 'one was');
                 $this->assertSame(['CLOSED_1_DIFF_TABS', false], $this->cliCall('closeAllDiffTabs'));
                 $this->assertSame(['DIFF_REJECTED', 'A.php'], $this->verdict($second));
                 $saved = \file_get_contents($a);
@@ -443,6 +554,64 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $this->await(static fn (): bool => "<?php\n" === $buffers->get($root.'/src/B.php')?->document->getText(), what: 'the proposal withdrawn');
                 $editor = Services::resolve($ide, CodeEditorWidget::class);
                 $this->await(static fn (): bool => [] === $editor->decorations->remoteCaretsIn($a), what: 'its marks gone with it');
+            },
+        ]);
+    }
+
+    public function testTheDockSpellsTheChangeLineByLineAndLetsItGoOnceSettled(): void
+    {
+        $project = new TempProject([
+            'src/A.php' => "<?php\n// one\n// two\n// three\n",
+            '.porta.json' => '{"enabledPlugins":["mcp"]}',
+        ]);
+        $a = (string) \realpath($project->path('src/A.php'));
+
+        $this->runIde($project, $project->path('src/A.php'), [
+            100 => function (Tui $tui, VirtualTerminal $terminal, Ide $ide) use ($a): void {
+                $this->connectCli($this->config->dir);
+                $kept = [];
+                Services::resolve($ide, EventDispatcherInterface::class)->addListener(AgentEditing::class, static function (AgentEditing $before) use (&$kept): void {
+                    $kept[] = [$before->path, $before->previousText];
+                });
+                $dock = static fn (): array => \array_map(
+                    static fn (array $row): array => [$row['path'], $row['line'], $row['text']],
+                    Probe::get(Services::resolve($ide, ResultsPanelWidget::class), 'results'),
+                );
+
+                $id = $this->propose($tui, $terminal, $a, "<?php\n// one\n", 'same');
+                $tui->handleInput("\x1b\x15"); // put back
+                $this->verdict($id);
+                $id = $this->propose($tui, $terminal, $a, "<?php\n// one\n// two\n// three\n", 'unchanged');
+                $this->assertSame(
+                    [
+                        ['', 0, 'unchanged'],
+                        ['', 0, 'No difference: the proposal is the text as it is'],
+                    ],
+                    $dock(),
+                );
+                $tui->handleInput("\x1b\x15");
+                $this->verdict($id);
+
+                $id = $this->propose($tui, $terminal, $a, "<?php\n// one\n// TWO\n// 2b\n// three\n", 'edit');
+                $this->assertSame(
+                    [
+                        ['',          0, 'edit'],
+                        ['src/A.php', 0, '  <?php'],
+                        ['src/A.php', 1, '  // one'],
+                        ['src/A.php', 2, '- // two'],
+                        ['src/A.php', 2, '+ // TWO'],
+                        ['src/A.php', 3, '+ // 2b'],
+                        ['src/A.php', 4, '  // three'],
+                        ['src/A.php', 5, '  '],
+                    ],
+                    $dock(),
+                    'the tab, two lines of context, what goes, what comes — each at its own line — and two more',
+                );
+                $this->assertSame([[$a, "<?php\n// one\n// two\n// three\n"]], $kept, 'the file as it was, handed on for recovery, once');
+                $tui->handleInput("\x1b\x19"); // keep
+                $this->assertSame('FILE_SAVED', $this->verdict($id)[0]);
+                $this->assertSame([], $dock(), 'settled: the dock lets the change go');
+                $this->assertSame("<?php\n// one\n// TWO\n// 2b\n// three\n", Services::resolve($ide, BufferManager::class)->get($a)?->document->getText(), 'kept is kept: nothing put back after');
             },
         ]);
     }
