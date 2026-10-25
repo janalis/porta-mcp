@@ -238,6 +238,8 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $this->assertSame(7, $this->cliAwait(static fn (array $m): bool => 7 === ($m['id'] ?? null), 'the ping that rode the handshake')['id']);
                 $this->assertSame([['success' => false, 'message' => 'No active editor found'], false], $this->cliCall('getCurrentSelection'), 'nothing open');
                 $this->assertSame([['success' => false, 'message' => 'No active editor found'], false], $this->cliCall('getLatestSelection'));
+                Services::resolve($ide, CommandRegistry::class)->run('mcp:mention_in_claude');
+                $this->assertContains('No Claude Code is connected — run /ide in claude, or start claude in the terminal', Toasts::all($ide), 'no file in front: nothing is mentioned');
 
                 // A frame past the cap: not a message this server is for.
                 $this->cliWrite("\x81\xFF".\pack('J', 20_000_000).'mask');
