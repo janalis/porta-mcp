@@ -11,6 +11,7 @@ use Porta\Editor\BufferService;
 use Porta\Editor\DiagnosticSeverity;
 use Porta\Editor\OpenFocus;
 use Porta\Event\AgentEditing;
+use Porta\Event\AgentLeft;
 use Porta\Event\ChangeProposed;
 use Porta\Ide;
 use Porta\Lsp\Uri;
@@ -548,16 +549,28 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $this->assertSame(['DIFF_REJECTED', 'B.php (quiet)'], $this->verdict($id));
                 $this->assertCount($before, $offered, 'nothing offered side by side');
 
-                // The client going takes its pending proposal with it.
-                $buffers->get($a)?->document->undo();
-                $this->propose($tui, $terminal, $root.'/src/B.php', "<?php\n// gone\n", 'B.php');
-                $this->assertIsResource($this->cli);
-                \fclose($this->cli);
-                $this->await(static fn (): bool => "<?php\n" === $buffers->get($root.'/src/B.php')?->document->getText(), what: 'the proposal withdrawn');
-                $editor = Services::resolve($ide, CodeEditorWidget::class);
-                $this->await(static fn (): bool => [] === $editor->decorations->remoteCaretsIn($a), what: 'its marks gone with it');
+                $this->goingTakesItsProposalAndItsMarks($tui, $terminal, $ide, $root);
             },
         ]);
+    }
+
+    /** The client going takes its pending proposal with it — and itself from among the agents at work. */
+    private function goingTakesItsProposalAndItsMarks(Tui $tui, VirtualTerminal $terminal, Ide $ide, string $root): void
+    {
+        $buffers = Services::resolve($ide, BufferManager::class);
+        $buffers->get($root.'/src/A.php')?->document->undo();
+        $this->propose($tui, $terminal, $root.'/src/B.php', "<?php\n// gone\n", 'B.php');
+        $editor = Services::resolve($ide, CodeEditorWidget::class);
+        $this->assertNotSame([], $editor->decorations->remoteCaretsIn($root.'/src/B.php'), 'Claude Code at its change');
+        $left = [];
+        Services::resolve($ide, EventDispatcherInterface::class)->addListener(AgentLeft::class, static function (AgentLeft $event) use (&$left): void {
+            $left[] = $event->agent;
+        });
+        $this->assertIsResource($this->cli);
+        \fclose($this->cli);
+        $this->await(static fn (): bool => "<?php\n" === $buffers->get($root.'/src/B.php')?->document->getText(), what: 'the proposal withdrawn');
+        $this->await(static fn (): bool => [] === $editor->decorations->remoteCaretsIn($root.'/src/B.php'), what: 'its marks gone with it');
+        $this->await(static fn (): bool => [] !== $left, what: 'and it gone from among the agents at work');
     }
 
     public function testTheDockSpellsTheChangeLineByLineAndLetsItGoOnceSettled(): void

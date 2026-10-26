@@ -143,6 +143,9 @@ final class McpPresenceE2eTest extends TestCase
                 $this->assertFalse($settings->value('mcp', 'showAgents'), 'turned off');
                 $this->await(fn (): bool => !\str_contains($this->screen($tui, $terminal), Glyphs::AGENT), what: 'the marks gone from the menu');
                 $settings->change('mcp', 'showAgents', true);
+                $lifecycle->onPluginSettingChanged('mcp', 'showAgents', true);
+                $this->ok('read_buffer');
+                $this->await(fn (): bool => \str_contains($this->screen($tui, $terminal), Glyphs::AGENT), what: 'shown again before the client goes');
 
                 $this->assertIsResource($this->client);
                 \fclose($this->client);
