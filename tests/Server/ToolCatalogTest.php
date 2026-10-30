@@ -99,6 +99,32 @@ final class ToolCatalogTest extends TestCase
         $this->assertNotNull($catalog->find('context'));
     }
 
+    public function testAWithheldEffectHidesEveryPluginsToolsThatHaveItWhileTheSwitchSaysSo(): void
+    {
+        $comment = self::tool('review', 'comment');
+        $comment['effect'] = ToolEffect::Publishes;
+        $reply = self::tool('forge', 'reply');
+        $reply['effect'] = ToolEffect::Publishes;
+        $threads = self::tool('review', 'threads');
+        $threads['effect'] = ToolEffect::Reads;
+        $publish = false;
+        $catalog = new ToolCatalog(
+            static fn (): array => [$comment, $threads, self::tool('mcp', 'context'), $reply],
+            'mcp',
+            static fn (): array => [],
+            static function () use (&$publish): array {
+                return $publish ? [] : [ToolEffect::Publishes];
+            },
+        );
+
+        $this->assertSame(['review_threads', 'context'], \array_column($catalog->describe(), 'name'), 'what reads, and a tool that names no effect, stay');
+        $this->assertNull($catalog->find('review_comment'), 'withholding is the guard, not just the listing');
+
+        $publish = true;
+
+        $this->assertSame(['review_comment', 'review_threads', 'context', 'forge_reply'], \array_column($catalog->describe(), 'name'), 'allowed: every plugin\'s');
+    }
+
     public function testAnUnknownNameFindsNothing(): void
     {
         $this->assertNull(self::catalog([])->find('nope'));

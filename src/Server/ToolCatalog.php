@@ -21,18 +21,22 @@ use Porta\Plugin\Api\ToolEffect;
  * client decides by whether to run a call without asking the user.
  *
  * Read afresh on every call, never cached: the set moves under a live
- * enable or disable, and the edit switch under a Settings change.
+ * enable or disable, and the switches under a Settings change. A switch
+ * that names an effect rather than tools — publishing — covers every
+ * plugin's, the ones it registers later included.
  */
 final readonly class ToolCatalog
 {
     /**
      * @param \Closure(): list<array{plugin: string, id: string, description: string, inputSchema: array<string, mixed>, handler: \Closure(array<string, mixed>, ToolCaller=): (string|array<array-key, mixed>|TextBlocks), effect: ?ToolEffect}> $tools
-     * @param \Closure(): list<string>                                                                                                                                                                $hidden wire names not to offer right now
+     * @param \Closure(): list<string>                                                                                                                                                                $hidden   wire names not to offer right now
+     * @param (\Closure(): list<ToolEffect>)|null                                                                                                                                                   $withheld effects not to offer right now, whichever plugin's tool has them
      */
     public function __construct(
         private \Closure $tools,
         private string $self,
         private \Closure $hidden,
+        private ?\Closure $withheld = null,
     ) {}
 
     /** @return list<array{name: string, description: string, inputSchema: array<string, mixed>, annotations?: array<string, bool>}> what `tools/list` answers */
@@ -82,10 +86,11 @@ final readonly class ToolCatalog
     private function offered(): array
     {
         $hidden = ($this->hidden)();
+        $withheld = null === $this->withheld ? [] : ($this->withheld)();
         $offered = [];
         foreach (($this->tools)() as $tool) {
             $name = $this->self === $tool['plugin'] ? $tool['id'] : $tool['plugin'].'_'.$tool['id'];
-            if (\array_key_exists($name, $offered) || \in_array($name, $hidden, strict: true)) {
+            if (\array_key_exists($name, $offered) || \in_array($name, $hidden, strict: true) || \in_array($tool['effect'], $withheld, strict: true)) {
                 continue;
             }
             $offered[$name] = ['description' => $tool['description'], 'inputSchema' => $tool['inputSchema'], 'handler' => $tool['handler'], 'effect' => $tool['effect']];

@@ -240,6 +240,25 @@ final class McpWorkspaceE2eTest extends TestCase
         ]);
     }
 
+    public function testWhatPublishesIsOffUntilTheUserAllowsIt(): void
+    {
+        foreach ([[[], false], [['allowPublish' => true], true]] as [$mcp, $offered]) {
+            $project = new TempProject([
+                'src/A.php' => "<?php\n",
+                '.porta.json' => \json_encode(['enabledPlugins' => ['mcp', 'review', 'diff', 'git'], 'plugins' => ['mcp' => $mcp]], \JSON_THROW_ON_ERROR),
+            ]);
+            $this->runIde($project, $project->path('src/A.php'), [
+                100 => function (Tui $tui, $terminal, Ide $ide) use ($project, $offered): void {
+                    $this->connect($project);
+                    $names = $this->names();
+                    $this->assertContains('review_threads', $names, 'reading the review is always on');
+                    $publishing = \array_values(\array_intersect(['review_reply', 'review_resolve', 'review_comment'], $names));
+                    $this->assertSame($offered ? ['review_reply', 'review_resolve', 'review_comment'] : [], $publishing);
+                },
+            ]);
+        }
+    }
+
     public function testARestrictedProjectsRunsAreNoAgentsToStartEvenWithRunsAllowedEverywhere(): void
     {
         // Allowed in the user's own config, for every project: what a

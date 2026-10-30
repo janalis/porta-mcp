@@ -28,6 +28,7 @@ use Porta\Plugin\Api\AbstractPlugin;
 use Porta\Plugin\Api\DisposablePlugin;
 use Porta\Plugin\Api\PluginApi;
 use Porta\Plugin\Api\ToolCaller;
+use Porta\Plugin\Api\ToolEffect;
 use Porta\Support\DiagnosticLog;
 
 /**
@@ -59,6 +60,13 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
             'bool',
             false,
             hint: 'save_buffer writes an open file to disk as Ctrl+S does; a file changed on disk is never overwritten. With edits allowed too, rename rewrites files that are not open',
+        );
+        $api->registerSetting(
+            'allowPublish',
+            'Let agents post to forges',
+            'bool',
+            false,
+            hint: 'review_reply, review_resolve, review_comment — any tool that publishes: what it posts, other people read, and Porta cannot take it back',
         );
         $api->registerSetting(
             'followAgent',
@@ -137,6 +145,7 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
                 ...($runs && true === $api->setting('allowRuns') ? [] : RunTools::RUNS),
                 ...(true === $api->setting('allowFileOps') ? [] : FileTools::FILE_OPS),
             ],
+            static fn (): array => true === $api->setting('allowPublish') ? [] : [ToolEffect::Publishes],
         );
         $log = DiagnosticLog::forRoot($api->projectRoot(), 'mcp');
         $server = new SocketServer(

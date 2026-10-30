@@ -218,9 +218,12 @@ ones:
 | `git_status` | git | The branch and every changed or untracked file |
 | `git_diff` | git | Unstaged changes, or staged ones, optionally for one file |
 | `review_threads` | review | The branch's review: every conversation, with its path, line and comments |
-| `review_reply` | review | Answer a thread |
-| `review_resolve` | review | Resolve a thread, or reopen one |
-| `review_comment` | review | Start a conversation on a line |
+| `review_reply` | review | Answer a thread — off until you turn on `allowPublish` |
+| `review_resolve` | review | Resolve a thread, or reopen one — off until you turn on `allowPublish` |
+| `review_comment` | review | Start a conversation on a line — off until you turn on `allowPublish` |
+
+A tool that publishes — what it does, other people see, and Porta cannot take
+back — is offered only with `allowPublish` on, whichever plugin it comes from.
 
 The list follows the IDE live: enable or disable a plugin, or change one of
 the `allow…` settings, and connected agents are told to fetch it again.
