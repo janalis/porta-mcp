@@ -38,8 +38,9 @@ changed. `--wait=<seconds>` makes it give up after that long without an IDE.
 The IDE listens on a unix socket, `.porta/mcp.sock`, that only your user can
 open. When the project path is too long for a socket, the socket goes in the
 temp directory under a random name, and `.porta/mcp.sock.path` says where —
-only a name Porta itself would choose is believed there, and only a socket is
-ever removed. The socket is removed when Porta quits or the plugin is
+only a name Porta itself would choose is believed there, of a file that is
+yours (in a temp directory other users share, theirs is never taken for the
+IDE), and only a socket is ever removed. The socket is removed when Porta quits or the plugin is
 disabled. A second Porta on the same project leaves the first one's socket
 alone, and takes over serving MCP once that one quits.
 

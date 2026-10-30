@@ -26,14 +26,19 @@ final class SocketPathTest extends TestCase
         $project = new TempProject();
         $root = $project->dir.'/'.\str_repeat('deep/', times: 20);
         \mkdir($root, recursive: true);
-        $server = new SocketPath($root, '/t/');
+        $temp = $project->dir.'/tmp';
+        \mkdir($temp);
+        $server = new SocketPath($root, $temp.'/');
 
         $path = $server->forServer();
 
-        $this->assertMatchesRegularExpression('~^/t/porta-mcp-[0-9a-f]{16}\.sock$~', $path);
+        $this->assertMatchesRegularExpression('~^'.\preg_quote($temp, delimiter: '~').'/porta-mcp-[0-9a-f]{16}\.sock$~', $path);
+        $this->assertSame($root.'/.porta/mcp.sock', $server->current(), 'nothing listening there yet: not believed');
+        \touch($path);
         $this->assertSame($path, new SocketPath($root, '/elsewhere')->current(), 'the bridge reads the pointer, whatever its own temp dir');
         $again = $server->forServer();
         $this->assertNotSame($path, $again, 'a name nobody can guess, and so take first');
+        \touch($again);
         $this->assertSame($again, $server->current(), 'the pointer follows the latest bind');
 
         $server->release();
@@ -85,7 +90,13 @@ final class SocketPathTest extends TestCase
 
             $this->assertSame($project->dir.'/.porta/mcp.sock', new SocketPath($project->dir)->current(), $foreign);
         }
-        $project = new TempProject(['.porta/mcp.sock.path' => "/t/porta-mcp-0123456789abcdef.sock\n"]);
-        $this->assertSame('/t/porta-mcp-0123456789abcdef.sock', new SocketPath($project->dir)->current(), 'ours, from any temp dir');
+        $project = new TempProject(['tmp/porta-mcp-0123456789abcdef.sock' => '']);
+        $project->write('.porta/mcp.sock.path', $project->path('tmp/porta-mcp-0123456789abcdef.sock')."\n");
+        $this->assertSame($project->path('tmp/porta-mcp-0123456789abcdef.sock'), new SocketPath($project->dir)->current(), 'ours, from any temp dir');
+        $this->assertSame(
+            $project->dir.'/.porta/mcp.sock',
+            new SocketPath($project->dir, user: (int) \fileowner($project->dir) + 1)->current(),
+            'another user\'s, in a temp dir they share: someone else listening at the name a clone gave',
+        );
     }
 }

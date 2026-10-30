@@ -99,22 +99,37 @@ final readonly class Arguments
     private function inside(string $raw): string
     {
         $root = $this->root();
-        $path = Path::makeAbsolute($raw, $root);
-        // A file that does not exist yet — one to create, a move's target —
-        // is resolved through its folder, so a project behind a symlink
-        // spells it the way it spells everything else.
-        $real = \realpath($path);
-        $folder = \realpath(\dirname($path));
-        $path = match (true) {
-            false !== $real => $real,
-            false !== $folder => $folder.'/'.\basename($path),
-            default => $path,
-        };
-        if (!Path::isBasePath($root, $path)) {
+        $path = self::resolved(Path::makeAbsolute($raw, $root));
+        if (null === $path || !Path::isBasePath($root, $path)) {
             throw new \InvalidArgumentException(\sprintf('%s is outside the project', $raw));
         }
 
         return $path;
+    }
+
+    /**
+     * $path with every link in it followed. What is not there yet — a file to
+     * create, a move's target, the folders a create makes — is resolved
+     * through the deepest folder that is, so a project behind a symlink
+     * spells it the way it spells everything else, and a link in the project
+     * to a folder outside it is outside, however deep the new path goes.
+     * Null through a link to nothing: what is made through it lands wherever
+     * it points.
+     */
+    private static function resolved(string $path): ?string
+    {
+        $missing = '';
+        $real = \realpath($path);
+        while (false === $real) {
+            if (\is_link($path)) {
+                return null;
+            }
+            $missing = '/'.\basename($path).$missing;
+            $path = \dirname($path);
+            $real = \realpath($path);
+        }
+
+        return $real.$missing;
     }
 
     public function requiredPath(): string

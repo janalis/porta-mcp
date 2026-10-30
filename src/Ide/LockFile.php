@@ -73,11 +73,23 @@ final readonly class LockFile
             \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_SLASHES,
         );
         $temporary = $this->path($port).'.tmp';
-        // @mago-expect lint:no-error-control-operator -- an unwritable directory warns; the false return is what is reported
-        if (false === @\file_put_contents($temporary, $json)) {
+        // Made the user's alone as it is created, not after: the directory is
+        // often the CLI's, readable by every user, and a chmod once the token
+        // is in leaves a moment it is not. One left by a crash keeps its mode
+        // when written over, so it goes first.
+        if (\is_file($temporary)) {
+            \unlink($temporary);
+        }
+        $umask = \umask(0o077);
+        try {
+            // @mago-expect lint:no-error-control-operator -- an unwritable directory warns; the false return is what is reported
+            $written = @\file_put_contents($temporary, $json);
+        } finally {
+            \umask($umask);
+        }
+        if (false === $written) {
             return \sprintf('%s is not writable', $this->directory);
         }
-        \chmod($temporary, permissions: 0o600);
         \rename($temporary, $this->path($port));
 
         return null;

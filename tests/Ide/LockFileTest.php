@@ -60,6 +60,12 @@ final class LockFileTest extends TestCase
         $lock->remove(4242);
         $this->assertFileDoesNotExist($path);
         $lock->remove(4242); // already gone: nothing to do
+
+        // a crash's leftover, readable by all: not written over as it is
+        \file_put_contents($path.'.tmp', data: '');
+        \chmod($path.'.tmp', permissions: 0o644);
+        $this->assertNull($lock->write(4242, ['/p'], $token));
+        $this->assertSame(0o600, \fileperms($path) & 0o777);
     }
 
     public function testWhereItCannotBeWrittenItSaysSo(): void

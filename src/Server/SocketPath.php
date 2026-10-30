@@ -27,11 +27,17 @@ final readonly class SocketPath
 
     private string $tempDir;
 
+    private int $user;
+
+    /** @param int|null $user whose socket alone is believed: this process's */
     public function __construct(
         private string $root,
         ?string $tempDir = null,
+        ?int $user = null,
     ) {
         $this->tempDir = $tempDir ?? \sys_get_temp_dir();
+        // Without ext-posix, the owner of the script running: the user's own install.
+        $this->user = $user ?? (\function_exists('posix_geteuid') ? \posix_geteuid() : (int) \getmyuid());
     }
 
     /** The pointer file, which exists only while a long-rooted project is listening. */
@@ -70,14 +76,17 @@ final readonly class SocketPath
      * clones — so only a pointer to a name of OUR making is believed: an
      * absolute `porta-mcp-<16 hex>.sock`, in whatever temp directory. Anything
      * else could aim the bridge, or the clean-up of a dead socket, anywhere.
+     * And only to one that is there and the user's own: in a `/tmp` every
+     * user shares, someone else could listen at the name a cloned pointer
+     * gives, and be the IDE the bridge tells everything. Theirs, once there,
+     * cannot be put in place of the user's: `/tmp` is sticky.
      */
     public function current(): string
     {
         $pointer = \is_file($this->pointer()) ? \trim((string) \file_get_contents($this->pointer())) : '';
+        $ours = 1 === \preg_match('~^/(?:[^/]+/)*porta-mcp-[0-9a-f]{16}\\.sock$~D', $pointer) && \file_exists($pointer) && \fileowner($pointer) === $this->user;
 
-        return 1 === \preg_match('~^/(?:[^/]+/)*porta-mcp-[0-9a-f]{16}\\.sock$~D', $pointer)
-            ? $pointer
-            : $this->root.'/.porta/mcp.sock';
+        return $ours ? $pointer : $this->root.'/.porta/mcp.sock';
     }
 
     /** The pointer goes with the socket, so a stale one never sends a bridge somewhere empty. */
