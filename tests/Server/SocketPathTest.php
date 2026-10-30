@@ -63,6 +63,19 @@ final class SocketPathTest extends TestCase
         $this->assertSame($root.'/.porta/mcp.sock', $paths->forServer(), 'no pointer to write, so no temp-dir socket to point at');
     }
 
+    /** `.porta/` comes with a clone: a pointer that is a link is not written through, and the bind refuses at the default. */
+    public function testAPointerThatIsALinkIsNotWrittenThrough(): void
+    {
+        $elsewhere = new TempProject(['.bashrc' => "export A=1\n"]);
+        $project = new TempProject();
+        $root = $project->dir.'/'.\str_repeat('deep/', times: 20);
+        \mkdir($root.'/.porta', recursive: true);
+        \symlink($elsewhere->path('.bashrc'), $root.'/.porta/mcp.sock.path');
+
+        $this->assertSame($root.'/.porta/mcp.sock', new SocketPath($root, '/t/')->forServer());
+        $this->assertSame("export A=1\n", \file_get_contents($elsewhere->path('.bashrc')));
+    }
+
     public function testTheCutOffIsTheLongestBindablePath(): void
     {
         $project = new TempProject();

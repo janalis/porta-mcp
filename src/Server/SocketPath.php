@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Porta\McpPlugin\Server;
 
+use Porta\Support\Files;
+
 /**
  * Where the IDE of one project listens, agreed on by the two processes that
  * need it: the IDE that binds and `porta mcp`, which connects.
@@ -54,8 +56,9 @@ final readonly class SocketPath
     /**
      * Where the IDE binds, with the pointer written when that is not the
      * default — a fresh name on every call. Creates `.porta/` when the
-     * project has none yet; when it cannot, the default, whose bind then
-     * fails saying why.
+     * project has none yet; when it cannot, or when the pointer would be
+     * written through a link ({@see Files::throughLink()}), the default,
+     * whose bind then fails saying why.
      */
     public function forServer(): string
     {
@@ -63,7 +66,7 @@ final readonly class SocketPath
         $dir = \dirname($default);
         // @mago-expect lint:no-error-control-operator -- a folder that cannot be made fails the bind at the default, which says so; the warning would only repeat it
         $made = \is_dir($dir) || @\mkdir($dir, recursive: true) || \is_dir($dir);
-        if (!$made || \strlen($default) <= self::MAX_LENGTH) {
+        if (!$made || \strlen($default) <= self::MAX_LENGTH || Files::throughLink($this->root, $this->pointer())) {
             return $default;
         }
         $short = \rtrim($this->tempDir, characters: '/').'/porta-mcp-'.\bin2hex(\random_bytes(8)).'.sock';
