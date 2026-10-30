@@ -178,7 +178,12 @@ final class McpCommand extends PluginCommand
         // new random name every time it starts.
         $path = $paths->current();
 
-        return null !== $this->connect ? ($this->connect)($path) : self::connect($path);
+        if (null !== $this->connect) {
+            return ($this->connect)($path);
+        }
+
+        // Only to a socket of the user's own, never one a cloned project linked in.
+        return $paths->isOurs($path) ? self::connect($path) : null;
     }
 
     /** @return resource|null */

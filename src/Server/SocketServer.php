@@ -65,13 +65,14 @@ final class SocketServer
 
     /**
      * What is at $existing out of the way: null once it is, else why it is not.
-     * Only a socket is ours to replace: a file, a directory or a link put
-     * there — by a cloned project, say — is left exactly as it is.
+     * Only a socket of the user's is ours to replace ({@see SocketPath::isOurs()}):
+     * a file, a directory, a link or another user's socket put there — by a
+     * cloned project, say — is left exactly as it is.
      */
     private function clear(string $existing): ?string
     {
-        return 'socket' !== \filetype($existing)
-            ? \sprintf('MCP could not listen at %s: something that is not a socket is there', $existing)
+        return !$this->paths->isOurs($existing)
+            ? \sprintf('MCP could not listen at %s: something that is not a socket of yours is there', $existing)
             : $this->takeOver($existing);
     }
 
@@ -107,14 +108,18 @@ final class SocketServer
     private function bind(): ?string
     {
         $path = $this->paths->forServer();
-        $umask = \umask(0o077);
-        try {
-            $errno = 0;
-            $error = '';
-            // @mago-expect lint:no-error-control-operator -- a bind failure warns as well as returning false; the message is carried in $error
-            $server = @\stream_socket_server('unix://'.$path, $errno, $error);
-        } finally {
-            \umask($umask);
+        $server = false;
+        $error = 'it is reached through a link';
+        if ($this->paths->bindable($path)) {
+            $umask = \umask(0o077);
+            try {
+                $errno = 0;
+                $error = '';
+                // @mago-expect lint:no-error-control-operator -- a bind failure warns as well as returning false; the message is carried in $error
+                $server = @\stream_socket_server('unix://'.$path, $errno, $error);
+            } finally {
+                \umask($umask);
+            }
         }
         if (false === $server) {
             $this->paths->release();

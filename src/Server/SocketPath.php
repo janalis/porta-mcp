@@ -96,10 +96,28 @@ final readonly class SocketPath
         $pointer = \is_file($this->pointer()) ? \trim((string) \file_get_contents($this->pointer())) : '';
         $folder = 1 === \preg_match('~^/(?:[^/]+/)*porta-mcp-[0-9a-f]{16}\\.sock$~D', $pointer) ? \realpath(\dirname($pointer)) : false;
         $socket = false === $folder ? '' : $folder.'/'.\basename($pointer);
-        $entry = '' !== $socket && \file_exists($socket) ? \lstat($socket) : false;
-        $ours = false !== $entry && self::SOCKET === ($entry['mode'] & self::TYPE) && $entry['uid'] === $this->user;
 
-        return $ours ? $socket : $this->root.'/.porta/mcp.sock';
+        return '' !== $socket && $this->isOurs($socket) ? $socket : $this->root.'/.porta/mcp.sock';
+    }
+
+    /**
+     * Whether $socket is one to take over or talk to: a socket, the user's
+     * own, itself and not a link, and not reached through one in the project.
+     * The default `.porta/mcp.sock` comes with a clone as the pointer does: a
+     * link there to someone else's socket would have the agent's requests,
+     * and the files they carry, sent to whoever listens at the other end.
+     */
+    public function isOurs(string $socket): bool
+    {
+        $entry = \file_exists($socket) ? \lstat($socket) : false;
+
+        return false !== $entry && self::SOCKET === ($entry['mode'] & self::TYPE) && $entry['uid'] === $this->user && $this->bindable($socket);
+    }
+
+    /** Whether a socket may be bound at $path: not through a link in the project, which would put it wherever that points. */
+    public function bindable(string $path): bool
+    {
+        return !Files::throughLink($this->root, $path);
     }
 
     /** The pointer goes with the socket, so a stale one never sends a bridge somewhere empty. */

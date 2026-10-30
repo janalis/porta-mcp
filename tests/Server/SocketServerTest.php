@@ -240,7 +240,7 @@ final class SocketServerTest extends TestCase
 
         $error = $this->server()->start();
 
-        $this->assertSame(\sprintf('MCP could not listen at %s: something that is not a socket is there', $path), $error);
+        $this->assertSame(\sprintf('MCP could not listen at %s: something that is not a socket of yours is there', $path), $error);
         $this->assertSame('precious', \file_get_contents($path));
     }
 
@@ -255,6 +255,43 @@ final class SocketServerTest extends TestCase
         $this->assertIsString($this->server()->start());
         $this->assertTrue(\is_link($path));
         $this->assertSame('precious', \file_get_contents($target));
+    }
+
+    /** A link to a live socket — someone else's, on a shared machine — is not another Porta to defer to. */
+    public function testASymlinkToALiveSocketIsNotTakenForAnotherPorta(): void
+    {
+        $elsewhere = new TempProject();
+        $live = \stream_socket_server('unix://'.$elsewhere->path('x.sock'));
+        $this->assertNotFalse($live);
+        $path = new SocketPath($this->project->dir)->forServer();
+        \symlink($elsewhere->path('x.sock'), $path);
+
+        $this->assertSame(\sprintf('MCP could not listen at %s: something that is not a socket of yours is there', $path), $this->server()->start());
+        // @mago-expect lint:no-error-control-operator -- an accept with nothing waiting warns; false is the answer
+        $this->assertFalse(@\stream_socket_accept($live, timeout: 0), 'nothing connected to it');
+    }
+
+    /** Someone else's socket at the path — on a shared machine — is not another Porta to defer to, nor ours to replace. */
+    public function testAnotherUsersSocketIsNeitherDeferredToNorReplaced(): void
+    {
+        $paths = new SocketPath($this->project->dir, user: \getmyuid() + 1);
+        $path = $paths->forServer();
+        $live = \stream_socket_server('unix://'.$path);
+        $this->assertNotFalse($live);
+
+        $this->assertSame(\sprintf('MCP could not listen at %s: something that is not a socket of yours is there', $path), $this->server($paths)->start());
+        // @mago-expect lint:no-error-control-operator -- an accept with nothing waiting warns; false is the answer
+        $this->assertFalse(@\stream_socket_accept($live, timeout: 0), 'nothing connected to it');
+    }
+
+    /** `.porta/` comes with a clone: one that is a link would have the socket made wherever it points. */
+    public function testAPortaFolderThatIsALinkIsNotBoundThrough(): void
+    {
+        $elsewhere = new TempProject();
+        \symlink($elsewhere->dir, $this->project->path('.porta'));
+
+        $this->assertSame(\sprintf('MCP could not listen at %s: it is reached through a link', $this->project->path('.porta/mcp.sock')), $this->server()->start());
+        $this->assertFileDoesNotExist($elsewhere->path('mcp.sock'));
     }
 
     public function testOnceTheOwnerQuitsTheOneThatWaitedServes(): void

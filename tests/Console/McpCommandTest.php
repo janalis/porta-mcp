@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Porta\McpPlugin\Tests\Console;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Porta\McpPlugin\Console\McpCommand;
 use Porta\McpPlugin\Protocol\Relay;
@@ -139,6 +140,39 @@ final class McpCommandTest extends TestCase
 
         $this->assertSame(0, $tester->getStatusCode());
         $this->assertIsResource(\stream_socket_accept($server, timeout: 1.0), 'it had connected');
+    }
+
+    /**
+     * A cloned `.porta/mcp.sock` linked to a socket elsewhere is no IDE, nor
+     * is a socket reached through a linked `.porta/`: the agent's requests
+     * never go there.
+     */
+    #[DataProvider('linkedSockets')]
+    public function testTheRealConnectNeverFollowsALinkedSocket(string $linked): void
+    {
+        $elsewhere = new TempProject();
+        $socket = '.porta' === $linked ? $elsewhere->path('mcp.sock') : $elsewhere->path('x.sock');
+        $listener = \stream_socket_server('unix://'.$socket);
+        $this->assertNotFalse($listener);
+        if ('.porta' !== $linked) {
+            \mkdir($this->project->path('.porta'));
+        }
+        \symlink('.porta' === $linked ? $elsewhere->dir : $socket, $this->project->path($linked));
+        $application = new Application();
+        $application->addCommand(new McpCommand($this->project->dir, null, $this->stdin(''), \fopen('php://memory', mode: 'wb+')));
+        $tester = new CommandTester($application->find('mcp'));
+        $tester->execute(['--wait' => '0'], ['capture_stderr_separately' => true]);
+
+        $this->assertStringContainsString('No Porta is serving MCP', $tester->getErrorOutput());
+        // @mago-expect lint:no-error-control-operator -- an accept with nothing waiting warns; false is the answer
+        $this->assertFalse(@\stream_socket_accept($listener, timeout: 0), 'nothing connected to it');
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function linkedSockets(): iterable
+    {
+        yield 'the socket' => ['.porta/mcp.sock'];
+        yield 'its folder' => ['.porta'];
     }
 
     public function testTheRealConnectReportsNoIde(): void
