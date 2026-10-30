@@ -18,6 +18,7 @@ use Porta\Tests\Support\PreservesPath;
 use Porta\Tests\Support\RunsIde;
 use Porta\Tests\Support\Services;
 use Porta\Tests\Support\TempProject;
+use Porta\Tests\Support\UntrustsProjects;
 use Porta\Tests\Support\UsesBundledPlugins;
 use Symfony\Component\Clock\NativeClock;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
@@ -35,6 +36,7 @@ final class McpWorkspaceE2eTest extends TestCase
     use PreservesPath;
     use RunsIde;
     use TalksMcp;
+    use UntrustsProjects;
     use UsesBundledPlugins;
 
     /** @param array<string, mixed> $mcp the plugin's settings */
@@ -234,6 +236,27 @@ final class McpWorkspaceE2eTest extends TestCase
             100 => function (Tui $tui, $terminal, Ide $ide) use ($empty): void {
                 $this->connect($empty);
                 $this->refused('save_buffer', [], 'No file is open');
+            },
+        ]);
+    }
+
+    public function testARestrictedProjectsRunsAreNoAgentsToStartEvenWithRunsAllowedEverywhere(): void
+    {
+        // Allowed in the user's own config, for every project: what a
+        // restricted project cannot take away, and still not enough.
+        $project = self::project(['allowRuns' => true], ['vendor/bin/phpunit' => "#!/bin/sh\nexit 0\n"]);
+        $global = \json_decode((string) \file_get_contents($project->path('.porta.json')), associative: true, flags: \JSON_THROW_ON_ERROR);
+        $this->untrustProjects();
+        \mkdir($this->untrustingHome->path('.porta'));
+        \file_put_contents($this->untrustingHome->path('.porta/config.json'), \json_encode($global, \JSON_THROW_ON_ERROR));
+        \unlink($project->path('.porta.json'));
+
+        $this->runIde($project, $project->path('src/A.php'), [
+            100 => function (Tui $tui, $terminal, Ide $ide) use ($project): void {
+                $this->connect($project);
+                $names = $this->names();
+                $this->assertContains('search', $names, 'the agent is connected, and offered what reads');
+                $this->assertSame([], \array_values(\array_intersect(['run_configurations', 'run', 'run_tests', 'run_output'], $names)), 'but nothing that runs the project');
             },
         ]);
     }

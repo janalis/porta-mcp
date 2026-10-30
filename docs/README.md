@@ -168,7 +168,9 @@ what `read_buffer` is for.
 ### Running tasks and tests
 
 With `allowRuns` on — it is off until you turn it on — the agent can run what
-the Run menu offers, and the project's PHPUnit tests:
+the Run menu offers, and the project's PHPUnit tests. Never in a project you
+have not trusted, though, even with `allowRuns` on in your own config: those
+are the project's own code, and an agent's pick is not yours.
 
 | Tool | Does |
 | --- | --- |

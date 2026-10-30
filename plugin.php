@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Porta\Config\WorkspaceTrust;
 use Porta\Event\ToolsChanged;
 use Porta\Ide;
 use Porta\McpPlugin\Ide\ClaudeCodeLink;
@@ -96,7 +97,7 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
             'Let agents run tasks and tests',
             'bool',
             false,
-            hint: 'run, run_tests: the Run menu\'s tasks and PHPUnit, in the terminal panel where you can watch them',
+            hint: 'run, run_tests: the Run menu\'s tasks and PHPUnit, in the terminal panel where you can watch them; never in a project not trusted',
         );
         $api->registerSetting(
             'allowFileOps',
@@ -119,6 +120,12 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
         );
         new CodeTools($api, static fn (): int => (int) $api->setting('lspTimeout'), $opener, $presence)->register();
 
+        // A restricted project's runs are its own code — composer scripts,
+        // Makefile targets, its PHP, its vendor/bin/phpunit — so not even a
+        // global allowRuns lets an agent start one there. The Run menu still
+        // does: a task picked there is the user's own choice, one an agent
+        // picks — read into it from the project's files, say — is not.
+        $runs = WorkspaceTrust::fromEnvironment()->isTrusted($api->projectRoot());
         $catalog = new ToolCatalog(
             $api->tools(...),
             $this->name(),
@@ -127,7 +134,7 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
                 ...(true === $api->setting('allowSave') ? [] : [CoreTools::SAVE]),
                 // A rename rewrites the files that are not open: an edit AND a save.
                 ...(true === $api->setting('allowEdits') && true === $api->setting('allowSave') ? [] : [CodeTools::RENAME]),
-                ...(true === $api->setting('allowRuns') ? [] : RunTools::RUNS),
+                ...($runs && true === $api->setting('allowRuns') ? [] : RunTools::RUNS),
                 ...(true === $api->setting('allowFileOps') ? [] : FileTools::FILE_OPS),
             ],
         );
