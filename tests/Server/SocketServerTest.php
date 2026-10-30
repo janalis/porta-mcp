@@ -213,7 +213,7 @@ final class SocketServerTest extends TestCase
             $loser->stop();
 
             $this->assertFileExists((string) $owner->path(), 'the owner keeps its socket');
-            $this->assertSame($owner->path(), $paths->current(), 'and its pointer');
+            $this->assertSame(\realpath(\dirname((string) $owner->path())).'/'.\basename((string) $owner->path()), $paths->current(), 'and its pointer');
         } finally {
             $owner->stop();
         }

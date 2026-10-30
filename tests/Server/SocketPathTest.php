@@ -26,20 +26,23 @@ final class SocketPathTest extends TestCase
         $project = new TempProject();
         $root = $project->dir.'/'.\str_repeat('deep/', times: 20);
         \mkdir($root, recursive: true);
-        $temp = $project->dir.'/tmp';
-        \mkdir($temp);
+        // where a socket's whole path fits
+        $temp = \sys_get_temp_dir();
         $server = new SocketPath($root, $temp.'/');
 
         $path = $server->forServer();
 
         $this->assertMatchesRegularExpression('~^'.\preg_quote($temp, delimiter: '~').'/porta-mcp-[0-9a-f]{16}\.sock$~', $path);
         $this->assertSame($root.'/.porta/mcp.sock', $server->current(), 'nothing listening there yet: not believed');
-        \touch($path);
-        $this->assertSame($path, new SocketPath($root, '/elsewhere')->current(), 'the bridge reads the pointer, whatever its own temp dir');
+        $listening = self::listen($path);
+        $this->assertSame(\realpath($temp).'/'.\basename($path), new SocketPath($root, '/elsewhere')->current(), 'the bridge reads the pointer, whatever its own temp dir');
         $again = $server->forServer();
         $this->assertNotSame($path, $again, 'a name nobody can guess, and so take first');
-        \touch($again);
-        $this->assertSame($again, $server->current(), 'the pointer follows the latest bind');
+        $listening = self::listen($again);
+        $this->assertSame(\realpath($temp).'/'.\basename($again), $server->current(), 'the pointer follows the latest bind');
+        \fclose($listening);
+        \unlink($path);
+        \unlink($again);
 
         $server->release();
         $this->assertFileDoesNotExist($server->pointer());
@@ -71,6 +74,14 @@ final class SocketPathTest extends TestCase
         $this->assertStringStartsWith('/t/porta-mcp-', new SocketPath($over, '/t')->forServer());
     }
 
+    /** @return resource a socket listening at $path */
+    private static function listen(string $path)
+    {
+        $server = \stream_socket_server('unix://'.$path);
+
+        return false === $server ? throw new \RuntimeException('cannot listen at '.$path) : $server;
+    }
+
     public function testABlankPointerFallsBackToTheDefault(): void
     {
         $project = new TempProject(['.porta/mcp.sock.path' => "  \n"]);
@@ -90,13 +101,26 @@ final class SocketPathTest extends TestCase
 
             $this->assertSame($project->dir.'/.porta/mcp.sock', new SocketPath($project->dir)->current(), $foreign);
         }
-        $project = new TempProject(['tmp/porta-mcp-0123456789abcdef.sock' => '']);
-        $project->write('.porta/mcp.sock.path', $project->path('tmp/porta-mcp-0123456789abcdef.sock')."\n");
-        $this->assertSame($project->path('tmp/porta-mcp-0123456789abcdef.sock'), new SocketPath($project->dir)->current(), 'ours, from any temp dir');
+        $project = new TempProject(['tmp/porta-mcp-fedcba9876543210.sock' => 'not a socket']);
+        // where a socket's whole path fits
+        $socket = (string) \realpath(\sys_get_temp_dir()).'/porta-mcp-'.\bin2hex(\random_bytes(8)).'.sock';
+        $listening = self::listen($socket);
+        $default = $project->dir.'/.porta/mcp.sock';
+        $project->write('.porta/mcp.sock.path', $socket."\n");
+        $this->assertSame($socket, new SocketPath($project->dir)->current(), 'ours, from any temp dir');
         $this->assertSame(
-            $project->dir.'/.porta/mcp.sock',
-            new SocketPath($project->dir, user: (int) \fileowner($project->dir) + 1)->current(),
+            $default,
+            new SocketPath($project->dir, user: (int) \fileowner($socket) + 1)->current(),
             'another user\'s, in a temp dir they share: someone else listening at the name a clone gave',
         );
+        foreach (['porta-mcp-fedcba9876543210.sock', 'porta-mcp-aaaaaaaaaaaaaaaa.sock'] as $name) {
+            if ('porta-mcp-aaaaaaaaaaaaaaaa.sock' === $name) {
+                \symlink($socket, $project->path('tmp/'.$name)); // passes for the user's, and can be aimed elsewhere once believed
+            }
+            $project->write('.porta/mcp.sock.path', $project->path('tmp/'.$name));
+            $this->assertSame($default, new SocketPath($project->dir)->current(), $name);
+        }
+        \fclose($listening);
+        \unlink($socket);
     }
 }

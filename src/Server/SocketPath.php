@@ -25,6 +25,11 @@ final readonly class SocketPath
     /** The longest path both kernels bind, with the terminator's byte to spare. */
     public const int MAX_LENGTH = 103;
 
+    /** A file's type, in a stat's mode, and the type that is a socket. */
+    private const int TYPE = 0o170_000;
+
+    private const int SOCKET = 0o140_000;
+
     private string $tempDir;
 
     private int $user;
@@ -76,17 +81,22 @@ final readonly class SocketPath
      * clones — so only a pointer to a name of OUR making is believed: an
      * absolute `porta-mcp-<16 hex>.sock`, in whatever temp directory. Anything
      * else could aim the bridge, or the clean-up of a dead socket, anywhere.
-     * And only to one that is there and the user's own: in a `/tmp` every
-     * user shares, someone else could listen at the name a cloned pointer
-     * gives, and be the IDE the bridge tells everything. Theirs, once there,
-     * cannot be put in place of the user's: `/tmp` is sticky.
+     * And only to a socket that is there and the user's own, itself and not
+     * through a link: in a `/tmp` every user shares, someone else could
+     * listen at the name a cloned pointer gives, or put a link there that
+     * passes for the user's and is aimed elsewhere once believed. Answered
+     * with its folder resolved, so no link is followed later either. A
+     * socket of the user's in sticky `/tmp` is not someone else's to swap.
      */
     public function current(): string
     {
         $pointer = \is_file($this->pointer()) ? \trim((string) \file_get_contents($this->pointer())) : '';
-        $ours = 1 === \preg_match('~^/(?:[^/]+/)*porta-mcp-[0-9a-f]{16}\\.sock$~D', $pointer) && \file_exists($pointer) && \fileowner($pointer) === $this->user;
+        $folder = 1 === \preg_match('~^/(?:[^/]+/)*porta-mcp-[0-9a-f]{16}\\.sock$~D', $pointer) ? \realpath(\dirname($pointer)) : false;
+        $socket = false === $folder ? '' : $folder.'/'.\basename($pointer);
+        $entry = '' !== $socket && \file_exists($socket) ? \lstat($socket) : false;
+        $ours = false !== $entry && self::SOCKET === ($entry['mode'] & self::TYPE) && $entry['uid'] === $this->user;
 
-        return $ours ? $pointer : $this->root.'/.porta/mcp.sock';
+        return $ours ? $socket : $this->root.'/.porta/mcp.sock';
     }
 
     /** The pointer goes with the socket, so a stale one never sends a bridge somewhere empty. */
