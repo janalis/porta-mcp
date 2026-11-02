@@ -4,6 +4,8 @@ The bundled `mcp` plugin runs a [Model Context Protocol](https://modelcontextpro
 server inside Porta. An agent such as Claude Code then works with **the IDE you
 have open**, not just the files on disk. It can:
 
+![The mcp page in Settings → Plugins](/screenshots/plugin-mcp.svg)
+
 - see what you are looking at;
 - read buffers with their unsaved edits;
 - read what the language servers found;
