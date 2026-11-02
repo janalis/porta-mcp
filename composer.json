@@ -1,5 +1,5 @@
 {
-    "name": "porta/mcp",
+    "name": "janalis/porta-mcp",
     "description": "An MCP server inside the IDE: agents read the buffers and diagnostics, navigate, edit, and call every tool other plugins offer",
     "type": "porta-plugin",
     "license": "MIT",
