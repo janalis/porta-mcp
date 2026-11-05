@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Porta\McpPlugin\Ide;
 
+use Porta\Support\Files;
 use Porta\Support\JsonFile;
 
 /**
@@ -47,8 +48,7 @@ final readonly class LockFile
      */
     public function write(int $port, array $folders, #[\SensitiveParameter] string $token): ?string
     {
-        // @mago-expect lint:no-error-control-operator -- a directory that cannot be made warns; the checks around it are what is reported
-        if (!\is_dir($this->directory) && !@\mkdir($this->directory, permissions: 0o700, recursive: true) && !\is_dir($this->directory)) {
+        if (!Files::ensureDir($this->directory, permissions: 0o700)) {
             return \sprintf('%s could not be created', $this->directory);
         }
 

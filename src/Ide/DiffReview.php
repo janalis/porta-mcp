@@ -10,6 +10,7 @@ use Porta\McpPlugin\Tools\Presence;
 use Porta\Overlay\State\ToastSeverity;
 use Porta\Plugin\Api\PluginApi;
 use Porta\Plugin\Api\ToolCaller;
+use Porta\Support\Files;
 use Revolt\EventLoop;
 use Revolt\EventLoop\Suspension;
 
@@ -223,8 +224,8 @@ final class DiffReview
     {
         $folder = \sys_get_temp_dir().'/porta-proposal-'.\bin2hex(\random_bytes(6));
         $copy = $folder.'/'.\basename($path);
-        // @mago-expect lint:no-error-control-operator -- an unwritable temp dir means no comparison, not a warning: the question is asked instead
-        if ((!@\mkdir($folder, permissions: 0o700) && !\is_dir($folder)) || false === \file_put_contents($copy, $proposed)) {
+        // An unwritable temp dir means no comparison: the question is asked instead.
+        if (!Files::ensureDir($folder, permissions: 0o700) || false === \file_put_contents($copy, $proposed)) {
             // an unwritable temp dir is environmental: the folder's name is fresh
             // @codeCoverageIgnoreStart
             return null;
