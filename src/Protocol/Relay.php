@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Porta\McpPlugin\Protocol;
 
 use Porta\McpPlugin\Server\Session;
+use Porta\Support\Decoded;
 
 /**
  * The little of the protocol `porta mcp` has to know so that its client
@@ -194,11 +195,7 @@ final class Relay
     /** @return array<array-key, mixed>|null */
     private static function decodable(string $line): ?array
     {
-        // @mago-expect analysis:mixed-assignment -- decoded JSON is untyped; only an array is kept
-        // @noinspection JsonEncodingApiUsageInspection -- a peer's line that is not JSON is dropped, not thrown: it comes off the network
-        $message = \json_decode($line, associative: true);
-
-        return \is_array($message) ? $message : null;
+        return Decoded::json($line);
     }
 
     private static function validId(mixed $id): int|string|null
