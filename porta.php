@@ -132,6 +132,8 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
         // global allowRuns lets an agent start one there. The Run menu still
         // does: a task picked there is the user's own choice, one an agent
         // picks — read into it from the project's files, say — is not.
+        // Asked once, at activation, as AbstractToolPlugin asks: what a project
+        // may run must not change under a session another window re-answered.
         $runs = $api->projectTrusted();
         $catalog = new ToolCatalog(
             $api->tools(...),
