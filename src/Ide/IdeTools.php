@@ -10,6 +10,7 @@ use Porta\McpPlugin\Tools\Presence;
 use Porta\Plugin\Api\PluginApi;
 use Porta\Plugin\Api\ToolCaller;
 use Porta\Plugin\Api\ToolEffect;
+use Porta\Support\Files;
 
 /**
  * The tools Claude Code calls on an IDE it is connected to — its own names
@@ -233,8 +234,7 @@ final readonly class IdeTools
         if (!\is_string($raw) || '' === $raw) {
             throw new \InvalidArgumentException('filePath is required');
         }
-        $real = \realpath($raw);
 
-        return false === $real ? $raw : $real;
+        return Files::canonical($raw);
     }
 }

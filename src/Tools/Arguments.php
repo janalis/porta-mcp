@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Porta\McpPlugin\Tools;
 
+use Porta\Support\Files;
 use Symfony\Component\Filesystem\Path;
 
 /**
@@ -91,9 +92,7 @@ final readonly class Arguments
     /** The project root, resolved, so every path is compared with one spelling of it. */
     public function root(): string
     {
-        $real = \realpath($this->root);
-
-        return false === $real ? $this->root : $real;
+        return Files::canonical($this->root);
     }
 
     private function inside(string $raw): string
