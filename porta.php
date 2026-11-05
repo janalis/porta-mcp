@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Porta\Config\WorkspaceTrust;
 use Porta\Event\ToolsChanged;
 use Porta\Ide;
 use Porta\McpPlugin\Ide\ClaudeCodeLink;
@@ -133,7 +132,7 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
         // global allowRuns lets an agent start one there. The Run menu still
         // does: a task picked there is the user's own choice, one an agent
         // picks — read into it from the project's files, say — is not.
-        $runs = WorkspaceTrust::fromEnvironment()->isTrusted($api->projectRoot());
+        $runs = $api->projectTrusted();
         $catalog = new ToolCatalog(
             $api->tools(...),
             $this->name(),
