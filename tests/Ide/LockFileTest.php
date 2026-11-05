@@ -41,6 +41,16 @@ final class LockFileTest extends TestCase
         $this->assertSame('/home/me/.claude/ide', LockFile::directory(), 'an empty setting is no setting');
     }
 
+    /**
+     * Every booted Ide with mcp on writes here: the suite's own folder, never
+     * the developer's ~/.claude/ide, which a live Claude Code reads.
+     */
+    public function testTheSuitesIdesAreNeverAnnouncedToTheDevelopersClaude(): void
+    {
+        $this->assertStringStartsWith(\sys_get_temp_dir().'/porta-test-claude-', LockFile::directory());
+        $this->assertDirectoryExists(LockFile::directory());
+    }
+
     public function testItIsWrittenWholeAndPrivateAndTakenBack(): void
     {
         $lock = new LockFile($this->dir->path('cfg/ide'));
