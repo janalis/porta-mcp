@@ -8,6 +8,7 @@ use Porta\Plugin\Api\PluginApi;
 use Porta\Plugin\Api\ToolCaller;
 use Porta\Plugin\Api\ToolEffect;
 use Porta\Support\FiberWait;
+use Porta\Support\Files;
 
 /**
  * The language servers the IDE already runs, as tools: where a symbol is
@@ -268,7 +269,7 @@ final readonly class CodeTools
      */
     private function byteColumn(string $path, int $line, int $utf16): int
     {
-        $text = $this->api->openBuffers()->text($path) ?? (\is_file($path) ? (string) \file_get_contents($path) : '');
+        $text = $this->api->openBuffers()->text($path) ?? Files::read($path);
         $bytes = 0;
         $units = 0;
         foreach (\mb_str_split(\explode("\n", $text)[$line] ?? '') as $char) {
