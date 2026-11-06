@@ -654,6 +654,36 @@ final class McpClaudeCodeE2eTest extends TestCase
         ]);
     }
 
+    /**
+     * A CRLF file with a byte-order mark, proposed in its own shape — as the
+     * CLI sends it, having read the file. The buffer holds neither, so the
+     * proposal is held the same way before it is compared: compared raw, every
+     * line differed, the mark went in as a character, and the text handed back
+     * to be written was LF. Kept, it goes back in the shape it came.
+     */
+    public function testACrlfMarkedFileIsComparedAndHandedBackInItsOwnShape(): void
+    {
+        $project = new TempProject([
+            'src/A.php' => "\u{FEFF}<?php\r\n// one\r\n// two\r\n",
+            '.porta.json' => '{"enabledPlugins":["mcp"]}',
+        ]);
+        $a = (string) \realpath($project->path('src/A.php'));
+
+        $this->runIde($project, $project->path('src/A.php'), [
+            100 => function (Tui $tui, VirtualTerminal $terminal, Ide $ide) use ($a): void {
+                $this->connectCli($this->config->dir);
+                $dock = static fn (): array => \array_column(Probe::get(Services::resolve($ide, ResultsPanelWidget::class), 'results'), column_key: 'text');
+
+                $id = $this->propose($tui, $terminal, $a, "\u{FEFF}<?php\r\n// one\r\n// TWO\r\n", 'crlf');
+
+                $this->assertSame(['crlf', '  <?php', '  // one', '- // two', '+ // TWO', '  '], $dock(), 'one line changed, not all of them');
+                $this->assertSame("<?php\n// one\n// TWO\n", Services::resolve($ide, BufferManager::class)->get($a)?->document->getText(), 'no mark, no CR in the text');
+                $tui->handleInput("\x1b\x19"); // keep
+                $this->assertSame(['FILE_SAVED', "\u{FEFF}<?php\r\n// one\r\n// TWO\r\n"], $this->verdict($id), 'handed back as the file is written');
+            },
+        ]);
+    }
+
     public function testANewFileIsOnDiskOnlyWhileItsProposalWaits(): void
     {
         $project = new TempProject(['src/B.php' => "<?php\n", '.porta.json' => '{"enabledPlugins":["mcp"]}']);

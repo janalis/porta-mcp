@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Porta\McpPlugin\Ide;
 
+use Porta\Editor\DiskText;
 use Porta\Event\ChangeProposed;
 use Porta\McpPlugin\Server\TextBlocks;
 use Porta\McpPlugin\Tools\Presence;
@@ -48,7 +49,7 @@ final class DiffReview
     /** Unchanged lines shown before and after the change, for where it is. */
     private const int CONTEXT = 2;
 
-    /** @var array<string, array{path: string, original: string, created: bool, copy: string|null, suspension: Suspension<TextBlocks>}> tab name => the proposal waiting for the user */
+    /** @var array<string, array{path: string, original: string, sent: string, created: bool, copy: string|null, suspension: Suspension<TextBlocks>}> tab name => the proposal waiting for the user */
     private array $pending = [];
 
     /** @param \Closure(): bool $sideBySide whether to offer the proposal to a side-by-side view too, read per proposal */
@@ -67,7 +68,10 @@ final class DiffReview
     public function open(array $arguments, ToolCaller $caller): TextBlocks
     {
         $path = self::string($arguments, 'new_file_path') ?? self::string($arguments, 'old_file_path') ?? throw new \InvalidArgumentException('new_file_path is required');
-        $proposed = self::string($arguments, 'new_file_contents') ?? throw new \InvalidArgumentException('new_file_contents is required');
+        $sent = self::string($arguments, 'new_file_contents') ?? throw new \InvalidArgumentException('new_file_contents is required');
+        // Held as the buffer holds the file — no mark, `\n` breaks — or a CRLF
+        // file differs on every line and its mark goes in as a character.
+        $proposed = DiskText::asHeld($sent);
         $tab = self::string($arguments, 'tab_name') ?? $path;
         if (\array_key_exists($tab, $this->pending)) {
             $this->decide($tab, Verdict::PutBack); // replaced by this one
@@ -101,8 +105,8 @@ final class DiffReview
         $this->presence->editing($caller, $path, $first);
         /** @var Suspension<TextBlocks> $suspension */
         $suspension = EventLoop::getSuspension();
-        $copy = $this->offer($path, $proposed);
-        $this->pending[$tab] = ['path' => $path, 'original' => $original, 'created' => $created, 'copy' => $copy, 'suspension' => $suspension];
+        $copy = $this->offer($path, $sent);
+        $this->pending[$tab] = ['path' => $path, 'original' => $original, 'sent' => $sent, 'created' => $created, 'copy' => $copy, 'suspension' => $suspension];
         // Shown side by side, the question would sit over the comparison and
         // keep it from scrolling: it is asked by keys instead, from anywhere.
         null === $copy ? $this->ask($tab) : $this->announce($tab);
@@ -173,7 +177,8 @@ final class DiffReview
                 // file only where none is, and this one it never read.
                 \unlink($path);
             }
-            $proposal['suspension']->resume(new TextBlocks(['FILE_SAVED', (string) $buffers->text($path)]));
+            // The CLI writes what it is handed: in the shape it sent, not the buffer's.
+            $proposal['suspension']->resume(new TextBlocks(['FILE_SAVED', DiskText::inShapeOf((string) $buffers->text($path), $proposal['sent'])]));
 
             return;
         }
