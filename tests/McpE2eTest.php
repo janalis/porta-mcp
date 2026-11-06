@@ -7,6 +7,8 @@ namespace Porta\McpPlugin\Tests;
 use PHPUnit\Framework\TestCase;
 use Porta\Editor\BufferService;
 use Porta\Editor\DiagnosticSeverity;
+use Porta\Editor\OpenFocus;
+use Porta\Event\AgentEditing;
 use Porta\Ide;
 use Porta\Lsp\Uri;
 use Porta\McpPlugin\Tests\Support\TalksMcp;
@@ -22,6 +24,7 @@ use Porta\Tests\Support\Toasts;
 use Porta\Tests\Support\UsesBundledPlugins;
 use Porta\Ui\Glyphs;
 use Porta\Widget\CodeEditorWidget;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\Tui\Tui;
 
 /**
@@ -187,7 +190,12 @@ final class McpE2eTest extends TestCase
         $this->runIde($project, $project->path('src/A.php'), [
             100 => function (Tui $tui, $terminal, Ide $ide) use ($project, $a): void {
                 $this->connect($project);
+                $kept = [];
+                Services::resolve($ide, EventDispatcherInterface::class)->addListener(AgentEditing::class, static function (AgentEditing $before) use (&$kept): void {
+                    $kept[] = [$before->path, $before->previousText];
+                });
                 $this->ok('insert_text', ['text' => '// top'."\n"]);
+                $this->assertSame([[$a, "<?php\necho 'a';\n"]], $kept, 'the version the user had, kept before the first insert');
 
                 // Part of it, numbered.
                 $this->assertSame("2\t<?php\n3\techo 'a';", $this->ok('read_buffer', ['startLine' => 2, 'endLine' => 3, 'lineNumbers' => true]));
@@ -302,6 +310,7 @@ final class McpE2eTest extends TestCase
             'src/A.php' => "<?php\nclass A {}\n",
             'src/B.php' => "<?php\nnew A();\n",
             'src/C.php' => "<?php\nnew A();\n",
+            'src/E.php' => "<?php\n// e\n",
             'README.md' => "# hi\n",
             '.porta.json' => \json_encode(
                 [
@@ -346,7 +355,15 @@ final class McpE2eTest extends TestCase
             },
             200 => function (Tui $tui, $terminal, Ide $ide) use ($a, $b, $c): void {
                 // Renaming: open files edited and unsaved, the others rewritten.
+                // The user has E open; the agent has never touched it.
+                $e = (string) \realpath(\dirname($a).'/E.php');
+                Services::resolve($ide, BufferService::class)->openFile($e, OpenFocus::Background);
+                $kept = [];
+                Services::resolve($ide, EventDispatcherInterface::class)->addListener(AgentEditing::class, static function (AgentEditing $before) use (&$kept): void {
+                    $kept[$before->path] = $before->previousText;
+                });
                 $renamed = $this->json('rename', ['path' => 'src/A.php', 'line' => 2, 'column' => 7, 'newName' => 'Z']);
+                $this->assertSame([$e => "<?php\n// e\n"], $kept, 'every open file is kept as the user had it, the first time the agent may change it; A and B were, when it formatted them');
                 $this->assertSame(3, $renamed['files']);
                 $this->assertSame([], $renamed['skipped']);
                 $this->assertStringContainsString('Undo Refactoring', $renamed['note']);

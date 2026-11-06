@@ -366,9 +366,11 @@ final readonly class CoreTools
     {
         $text = $this->arguments($arguments)->text('text');
         $target = $this->api->activeFile();
-        if (null === $target || null === $this->api->openBuffers()->text($target)) {
+        $held = null === $target ? null : $this->api->openBuffers()->text($target);
+        if (null === $target || null === $held) {
             throw new \RuntimeException('No text file is active to insert into');
         }
+        $this->presence->before($caller, $target, $held); // the version the user had, as every edit tool keeps it
         $this->api->insertAtCaret($text);
         $caret = $this->api->caretPosition() ?? ['line' => 0, 'column' => 0];
         $this->presence->editing($caller, $target, $caret['line'], $caret['column']);

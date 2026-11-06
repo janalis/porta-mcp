@@ -235,6 +235,13 @@ final readonly class CodeTools
         if ('' === \trim($newName)) {
             throw new \InvalidArgumentException('newName is required');
         }
+        // The rename edits whichever open files use the symbol, which only the
+        // server knows: each open one is kept as the user had it, as every
+        // edit tool keeps what it is about to change. Unchanged, a keep is a
+        // no-op for local history.
+        foreach ($this->api->openBuffers()->files() as ['path' => $open]) {
+            $this->presence->before($caller, $open, (string) $this->api->openBuffers()->text($open));
+        }
         $this->presence->editing($caller, $path, $line, $this->byteColumn($path, $line, $column));
         /** @var array{0: array{files: int, skipped: list<string>}|null, 1: ?string} $answer */
         $answer = $this->wait(fn (\Closure $done) => $this->api->codeIntelligence()->rename($path, $line, $column, $newName, static fn (?array $outcome, ?string $error) => $done([$outcome, $error])));
