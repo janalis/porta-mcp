@@ -160,7 +160,9 @@ none of it.
 in the editor, so you review it, keep it with Ctrl+S, or take it back with
 Ctrl+Z. Turn the `allowEdits` setting off and the edit tools are not offered
 at all. Turn `allowSave` on and the agent may save too — as Ctrl+S
-does, so local history keeps the version it replaced. A file that changed on
+does, so local history keeps the version it replaced. The setting covers
+Claude Code's `/ide` connection as well: its `saveDocument` is refused while
+`allowSave` is off. A file that changed on
 disk while it held edits is never overwritten: the agent is told to ask you.
 
 `search` reads the files **on disk**, as Find in Files does, with its excludes

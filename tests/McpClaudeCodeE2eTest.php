@@ -28,6 +28,7 @@ use Porta\Tests\Support\Services;
 use Porta\Tests\Support\TempProject;
 use Porta\Tests\Support\Toasts;
 use Porta\Tests\Support\UsesBundledPlugins;
+use Porta\Tests\Support\Widgets;
 use Porta\Ui\Glyphs;
 use Porta\Widget\CodeEditorWidget;
 use Porta\Widget\ResultsPanelWidget;
@@ -68,12 +69,13 @@ final class McpClaudeCodeE2eTest extends TestCase
         \putenv(false === $this->previous ? 'CLAUDE_CONFIG_DIR' : 'CLAUDE_CONFIG_DIR='.$this->previous);
     }
 
-    private static function project(): TempProject
+    // @mago-expect lint:no-boolean-flag-parameter -- the one setting the saveDocument tests turn on
+    private static function project(bool $allowSave = false): TempProject
     {
         return new TempProject([
             'src/A.php' => "<?php\né // a\necho 'a';\n",
             'src/B.php' => "<?php\n// second\n",
-            '.porta.json' => '{"enabledPlugins":["mcp"]}',
+            '.porta.json' => $allowSave ? '{"enabledPlugins":["mcp"],"plugins":{"mcp":{"allowSave":true}}}' : '{"enabledPlugins":["mcp"]}',
         ]);
     }
 
@@ -88,7 +90,7 @@ final class McpClaudeCodeE2eTest extends TestCase
 
     public function testTheCliSeesTheOpenFileAndSelectionAndOpensFilesHere(): void
     {
-        $project = self::project();
+        $project = self::project(allowSave: true);
         $root = (string) \realpath($project->dir);
         $a = $root.'/src/A.php';
 
@@ -389,9 +391,30 @@ final class McpClaudeCodeE2eTest extends TestCase
         ]);
     }
 
-    public function testDiagnosticsAreEveryFilesOrTheOneAskedAbout(): void
+    /** "Let agents save files" off — the default — covers Claude Code's saveDocument as it does save_buffer. */
+    public function testSaveDocumentObeysTheSaveSetting(): void
     {
         $project = self::project();
+        $root = (string) \realpath($project->dir);
+        $a = $root.'/src/A.php';
+
+        $this->runIde($project, $project->path('src/A.php'), [
+            100 => function (Tui $tui, $terminal, Ide $ide) use ($a): void {
+                $this->connectCli($this->config->dir);
+                Widgets::editor($tui)->getDocument()->insert('// unsaved ');
+
+                $answer = $this->cliCall('saveDocument', ['filePath' => $a])[0];
+
+                $this->assertSame([false, false], [$answer['success'], $answer['saved']]);
+                $this->assertStringContainsString('Saving is off', (string) $answer['message']);
+                $this->assertStringNotContainsString('// unsaved', (string) \file_get_contents($a), 'nothing written');
+            },
+        ]);
+    }
+
+    public function testDiagnosticsAreEveryFilesOrTheOneAskedAbout(): void
+    {
+        $project = self::project(allowSave: true);
         $root = (string) \realpath($project->dir);
         $a = $root.'/src/A.php';
 

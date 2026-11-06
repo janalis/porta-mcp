@@ -219,7 +219,12 @@ final readonly class IdeTools
     private function save(array $arguments): array
     {
         $path = self::path($arguments['filePath'] ?? null);
-        $why = $this->api->openBuffers()->save($path);
+        // The setting that keeps `porta mcp`'s save_buffer away covers this
+        // connection too: one setting, one meaning. Claude Code's own edits
+        // still land, through openDiff — which the user accepts.
+        $why = true === $this->api->setting('allowSave')
+            ? $this->api->openBuffers()->save($path)
+            : 'Saving is off: turn on "Let agents save files" (mcp allowSave) to let an agent save';
 
         return (
             null === $why

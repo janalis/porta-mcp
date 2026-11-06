@@ -58,7 +58,7 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
             'Let agents save files',
             'bool',
             false,
-            hint: 'save_buffer writes an open file to disk as Ctrl+S does; a file changed on disk is never overwritten. With edits allowed too, rename rewrites files that are not open',
+            hint: 'save_buffer — and Claude Code\'s saveDocument — write an open file to disk as Ctrl+S does; a file changed on disk is never overwritten. With edits allowed too, rename rewrites files that are not open',
         );
         $api->registerSetting(
             'allowPublish',
