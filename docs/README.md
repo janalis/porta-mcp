@@ -14,7 +14,7 @@ have open**, not just the files on disk. It can:
 
 It can also call every tool the other plugins offer.
 
-It is off by default. Turn it on under **Settings → Plugins → mcp**.
+Bundled with Porta and off by default — turn it on under **Settings → Plugins → mcp**.
 
 ## Connecting an agent
 
@@ -171,7 +171,7 @@ what `read_buffer` is for.
 
 ### Running tasks and tests
 
-With `allowRuns` on — it is off until you turn it on — the agent can run what
+With `allowRuns` on, the agent can run what
 the Run menu offers, and the project's PHPUnit tests. Never in a project you
 have not trusted, though, even with `allowRuns` on in your own config: those
 are the project's own code, and an agent's pick is not yours.
@@ -191,8 +191,7 @@ Running a label again replaces the run in progress, as the Run menu does.
 
 ### Creating, moving and deleting files
 
-With `allowFileOps` on — it is off until you turn it on — the agent can
-change the files themselves:
+With `allowFileOps` on, the agent can change the files themselves:
 
 | Tool | Does |
 | --- | --- |
@@ -255,6 +254,24 @@ whose it was.
 
 A plugin author offers a tool with `registerTool()`; see
 [Plugins](../../../docs/plugins.md#offering-a-tool-to-agents).
+
+## Settings
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| Let agents edit open files (`allowEdits`) | on | Offer the edit tools and `format`: unsaved, one undo step each |
+| Let agents save files (`allowSave`) | off | Offer `save_buffer`, and accept Claude Code's `saveDocument` |
+| Let agents post to forges (`allowPublish`) | off | Offer the tools that publish, such as `review_reply` |
+| Bring the file an agent edits to the front (`followAgent`) | off | Off, an agent edits in a tab behind yours |
+| Show agents at work (`showAgents`) | on | The ✦ on tabs and tree rows, and who is doing what in the status bar |
+| Show an agent's cursor in the editor (`showAgentCursor`) | on | A caret in the agent's colour where it reads or edits |
+| Hide an agent after (seconds) (`agentFade`) | 10 | How long its marks stay once it stops touching the file; 2 to 120 |
+| Let agents run tasks and tests (`allowRuns`) | off | Offer `run` and `run_tests`, never in a project not trusted |
+| Let agents create, move and delete files (`allowFileOps`) | off | Offer `create_file`, `move_file` and `delete_file` |
+| Wait for a run to end (seconds) (`runTimeout`) | 300 | How long `run` and `run_tests` wait before answering; 1 to 3600 |
+| Wait for a language server (seconds) (`lspTimeout`) | 15 | How long a code tool waits for an answer; 1 to 300 |
+| Connect Claude Code to this editor (`claudeCode`) | on | Claude Code's `/ide` connection |
+| Show Claude's proposed changes side by side (`claudeSideBySide`) | on | A change Claude Code proposes opens in the git view, beside the file |
 
 ## Keys
 
