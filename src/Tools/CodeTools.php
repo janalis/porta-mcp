@@ -236,11 +236,14 @@ final readonly class CodeTools
             throw new \InvalidArgumentException('newName is required');
         }
         // The rename edits whichever open files use the symbol, which only the
-        // server knows: each open one is kept as the user had it, as every
-        // edit tool keeps what it is about to change. Unchanged, a keep is a
-        // no-op for local history.
+        // server knows — so each open one's text is taken first, and the ones
+        // it changed are kept as the user had them, as every edit tool keeps
+        // what it changes. Not the others: a keep is once per file, and spent
+        // on a file the rename never touched it was not there for the agent's
+        // first real edit of it.
+        $texts = [];
         foreach ($this->api->openBuffers()->files() as ['path' => $open]) {
-            $this->presence->before($caller, $open, (string) $this->api->openBuffers()->text($open));
+            $texts[$open] = (string) $this->api->openBuffers()->text($open);
         }
         $this->presence->editing($caller, $path, $line, $this->byteColumn($path, $line, $column));
         /** @var array{0: array{files: int, skipped: list<string>}|null, 1: ?string} $answer */
@@ -248,6 +251,12 @@ final readonly class CodeTools
         [$outcome, $error] = $answer;
         if (null === $outcome) {
             throw new \RuntimeException($error ?? 'The rename was not applied');
+        }
+        foreach ($texts as $open => $text) {
+            if ($this->api->openBuffers()->text($open) === $text) {
+                continue;
+            }
+            $this->presence->before($caller, $open, $text);
         }
 
         return $outcome + ['note' => 'Open files are edited and unsaved; the others were rewritten on disk. Undo Refactoring takes it all back.'];

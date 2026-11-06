@@ -353,17 +353,24 @@ final class McpE2eTest extends TestCase
                 $this->refused('format', ['path' => 'src/D.php'], 'is not a file');
                 $this->refused('format', ['path' => 'README.md'], 'No language server is configured for README.md');
             },
-            200 => function (Tui $tui, $terminal, Ide $ide) use ($a, $b, $c): void {
+            200 => function (Tui $tui, $terminal, Ide $ide) use ($project, $a, $b, $c): void {
                 // Renaming: open files edited and unsaved, the others rewritten.
-                // The user has E open; the agent has never touched it.
+                // The user has E open, which the rename does not touch; and a
+                // fresh agent, for which A and B were never kept.
                 $e = (string) \realpath(\dirname($a).'/E.php');
                 Services::resolve($ide, BufferService::class)->openFile($e, OpenFocus::Background);
+                $this->connect($project);
                 $kept = [];
                 Services::resolve($ide, EventDispatcherInterface::class)->addListener(AgentEditing::class, static function (AgentEditing $before) use (&$kept): void {
                     $kept[$before->path] = $before->previousText;
                 });
                 $renamed = $this->json('rename', ['path' => 'src/A.php', 'line' => 2, 'column' => 7, 'newName' => 'Z']);
-                $this->assertSame([$e => "<?php\n// e\n"], $kept, 'every open file is kept as the user had it, the first time the agent may change it; A and B were, when it formatted them');
+                \ksort($kept);
+                $this->assertSame(
+                    [$a => "<?php\nclass A {}\n", $b => "<?php\nnew A();\n"],
+                    $kept,
+                    'each open file the rename changed, kept as the user had it; E, untouched, keeps its first keep for a real edit',
+                );
                 $this->assertSame(3, $renamed['files']);
                 $this->assertSame([], $renamed['skipped']);
                 $this->assertStringContainsString('Undo Refactoring', $renamed['note']);
