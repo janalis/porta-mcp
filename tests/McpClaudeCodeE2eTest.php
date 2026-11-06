@@ -684,6 +684,36 @@ final class McpClaudeCodeE2eTest extends TestCase
         ]);
     }
 
+    /**
+     * Proposed as LF with no mark, for a CRLF file that has one: the side-by-side
+     * copy is set beside the file on disk, so it takes the file's shape — or
+     * every line of the comparison differs, and the one real edit hides.
+     */
+    public function testTheSideBySideCopyTakesTheShapeOfTheFileItIsComparedWith(): void
+    {
+        $project = new TempProject([
+            'src/A.php' => "\u{FEFF}<?php\r\n// one\r\n// two\r\n",
+            '.porta.json' => '{"enabledPlugins":["mcp"]}',
+        ]);
+        $a = (string) \realpath($project->path('src/A.php'));
+
+        $this->runIde($project, $project->path('src/A.php'), [
+            100 => function (Tui $tui, VirtualTerminal $terminal, Ide $ide) use ($a): void {
+                $this->connectCli($this->config->dir);
+                $copies = [];
+                Services::resolve($ide, EventDispatcherInterface::class)->addListener(ChangeProposed::class, static function (ChangeProposed $proposal) use (&$copies): void {
+                    $copies[] = (string) \file_get_contents($proposal->proposedPath);
+                });
+
+                $id = $this->propose($tui, $terminal, $a, "<?php\n// one\n// TWO\n", 'lf');
+
+                $this->assertSame(["\u{FEFF}<?php\r\n// one\r\n// TWO\r\n"], $copies);
+                $tui->handleInput("\x1b\x15"); // put back
+                $this->assertSame(['DIFF_REJECTED', 'lf'], $this->verdict($id));
+            },
+        ]);
+    }
+
     public function testANewFileIsOnDiskOnlyWhileItsProposalWaits(): void
     {
         $project = new TempProject(['src/B.php' => "<?php\n", '.porta.json' => '{"enabledPlugins":["mcp"]}']);

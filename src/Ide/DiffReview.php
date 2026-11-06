@@ -105,7 +105,9 @@ final class DiffReview
         $this->presence->editing($caller, $path, $first);
         /** @var Suspension<TextBlocks> $suspension */
         $suspension = EventLoop::getSuspension();
-        $copy = $this->offer($path, $sent);
+        // Set beside the file on disk, so in its shape: in the one Claude
+        // sent, a CRLF file's every line differed and the edit hid.
+        $copy = $this->offer($path, DiskText::inShapeOf($proposed, Files::read($path)));
         $this->pending[$tab] = ['path' => $path, 'original' => $original, 'sent' => $sent, 'created' => $created, 'copy' => $copy, 'suspension' => $suspension];
         // Shown side by side, the question would sit over the comparison and
         // keep it from scrolling: it is asked by keys instead, from anywhere.
