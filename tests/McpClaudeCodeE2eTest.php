@@ -714,6 +714,31 @@ final class McpClaudeCodeE2eTest extends TestCase
         ]);
     }
 
+    /**
+     * Kept after its tab was closed, a proposal has no buffer to hand back:
+     * the answer was FILE_SAVED with an empty text, and the CLI, which writes
+     * what it is handed, emptied the file. It is turned down instead — the
+     * file stays as it is on disk.
+     */
+    public function testAProposalKeptAfterItsTabClosedIsTurnedDownNotEmptied(): void
+    {
+        $project = new TempProject(['src/A.php' => "<?php\n// one\n", '.porta.json' => '{"enabledPlugins":["mcp"]}']);
+        $a = (string) \realpath($project->path('src/A.php'));
+
+        $this->runIde($project, $project->path('src/A.php'), [
+            100 => function (Tui $tui, VirtualTerminal $terminal, Ide $ide) use ($a): void {
+                $this->connectCli($this->config->dir);
+                $id = $this->propose($tui, $terminal, $a, "<?php\n// TWO\n", 'gone');
+                Services::resolve($ide, BufferManager::class)->close($a); // the tab closed, edits and all
+
+                $tui->handleInput("\x1b\x19"); // keep
+
+                $this->assertSame(['DIFF_REJECTED', 'gone'], $this->verdict($id), 'nothing to hand back, so nothing for the CLI to write');
+                $this->assertSame("<?php\n// one\n", \file_get_contents($a));
+            },
+        ]);
+    }
+
     public function testANewFileIsOnDiskOnlyWhileItsProposalWaits(): void
     {
         $project = new TempProject(['src/B.php' => "<?php\n", '.porta.json' => '{"enabledPlugins":["mcp"]}']);

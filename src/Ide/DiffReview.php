@@ -161,6 +161,14 @@ final class DiffReview
         unset($this->pending[$tab]);
         $this->api->updateList(self::LIST, []);
         $file = \basename($proposal['path']);
+        $buffers = $this->api->openBuffers();
+        // Kept with its tab gone — closed, edits and all — there is no text to
+        // hand back, and the CLI writes what it is handed: an empty answer
+        // emptied the file. Turned down, the file stays as it is on disk.
+        $held = $buffers->text($proposal['path']);
+        if (null === $held) {
+            $verdict = Verdict::PutBack;
+        }
         $this->api->notify(
             Verdict::Keep === $verdict ? $this->api->trans('Kept Claude\'s change to %file%', ['%file%' => $file]) : $this->api->trans('Put %file% back as it was', ['%file%' => $file]),
             Verdict::Keep === $verdict ? ToastSeverity::Success : ToastSeverity::Info,
@@ -171,7 +179,6 @@ final class DiffReview
             \unlink($proposal['copy']);
             \rmdir(\dirname($proposal['copy']));
         }
-        $buffers = $this->api->openBuffers();
         $path = $proposal['path'];
         if (Verdict::Keep === $verdict) {
             if ($proposal['created']) {
@@ -180,11 +187,13 @@ final class DiffReview
                 \unlink($path);
             }
             // The CLI writes what it is handed: in the shape it sent, not the buffer's.
-            $proposal['suspension']->resume(new TextBlocks(['FILE_SAVED', DiskText::inShapeOf((string) $buffers->text($path), $proposal['sent'])]));
+            $proposal['suspension']->resume(new TextBlocks(['FILE_SAVED', DiskText::inShapeOf((string) $held, $proposal['sent'])]));
 
             return;
         }
-        $this->replace($path, (string) $buffers->text($path), $proposal['original']);
+        if (null !== $held) {
+            $this->replace($path, $held, $proposal['original']);
+        }
         if ($proposal['created']) {
             $buffers->delete($path);
         }
