@@ -739,6 +739,37 @@ final class McpClaudeCodeE2eTest extends TestCase
         ]);
     }
 
+    /**
+     * Two Claude Code sessions connected, and one of them quits: only its own
+     * proposals are turned down. Every one was, so the other session's change
+     * went back and was answered "rejected" though nobody had said so.
+     */
+    public function testOneClientLeavingLeavesAnothersProposalWaiting(): void
+    {
+        $project = new TempProject(['src/A.php' => "<?php\n// one\n", '.porta.json' => '{"enabledPlugins":["mcp"]}']);
+        $a = (string) \realpath($project->path('src/A.php'));
+
+        $this->runIde($project, $project->path('src/A.php'), [
+            100 => function (Tui $tui, VirtualTerminal $terminal, Ide $ide) use ($a): void {
+                $this->connectCli($this->config->dir);
+                $id = $this->propose($tui, $terminal, $a, "<?php\n// TWO\n", 'stays');
+                [$cli, $frames, $inbox, $lastId] = [$this->cli, $this->cliFrames, $this->cliInbox, $this->cliId];
+
+                $this->connectCli($this->config->dir); // a second session…
+                $this->assertIsResource($this->cli);
+                \fclose($this->cli); // …that quits
+                [$this->cli, $this->cliFrames, $this->cliInbox, $this->cliId] = [$cli, $frames, $inbox, $lastId];
+                // Two round trips on the first session: the second one's
+                // hang-up was already waiting when they arrived.
+                $this->cliRequest('tools/list');
+                $this->cliRequest('tools/list');
+
+                $tui->handleInput("\x1b\x19"); // keep
+                $this->assertSame(['FILE_SAVED', "<?php\n// TWO\n"], $this->verdict($id), 'still waiting, and kept');
+            },
+        ]);
+    }
+
     public function testANewFileIsOnDiskOnlyWhileItsProposalWaits(): void
     {
         $project = new TempProject(['src/B.php' => "<?php\n", '.porta.json' => '{"enabledPlugins":["mcp"]}']);

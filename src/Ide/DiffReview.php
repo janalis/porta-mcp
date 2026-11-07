@@ -49,7 +49,7 @@ final class DiffReview
     /** Unchanged lines shown before and after the change, for where it is. */
     private const int CONTEXT = 2;
 
-    /** @var array<string, array{path: string, original: string, sent: string, created: bool, copy: string|null, suspension: Suspension<TextBlocks>}> tab name => the proposal waiting for the user */
+    /** @var array<string, array{path: string, original: string, sent: string, created: bool, copy: string|null, suspension: Suspension<TextBlocks>, caller: string}> tab name => the proposal waiting for the user, and who proposed it */
     private array $pending = [];
 
     /** @param \Closure(): bool $sideBySide whether to offer the proposal to a side-by-side view too, read per proposal */
@@ -108,7 +108,7 @@ final class DiffReview
         // Set beside the file on disk, so in its shape: in the one Claude
         // sent, a CRLF file's every line differed and the edit hid.
         $copy = $this->offer($path, DiskText::inShapeOf($proposed, Files::read($path)));
-        $this->pending[$tab] = ['path' => $path, 'original' => $original, 'sent' => $sent, 'created' => $created, 'copy' => $copy, 'suspension' => $suspension];
+        $this->pending[$tab] = ['path' => $path, 'original' => $original, 'sent' => $sent, 'created' => $created, 'copy' => $copy, 'suspension' => $suspension, 'caller' => $caller->id];
         // Shown side by side, the question would sit over the comparison and
         // keep it from scrolling: it is asked by keys instead, from anywhere.
         null === $copy ? $this->ask($tab) : $this->announce($tab);
@@ -141,7 +141,22 @@ final class DiffReview
         return true;
     }
 
-    /** Turn every waiting proposal down — the client went, or asked for its tabs closed; how many there were. */
+    /**
+     * Turn down what $caller proposed and still waits — that client went. Only
+     * its own: with two Claude Code sessions connected, one quitting put the
+     * other's proposal back and answered it "rejected".
+     */
+    public function rejectFrom(ToolCaller $caller): void
+    {
+        foreach ($this->pending as $tab => $proposal) {
+            if ($proposal['caller'] !== $caller->id) {
+                continue;
+            }
+            $this->decide($tab, Verdict::PutBack);
+        }
+    }
+
+    /** Turn every waiting proposal down — a client asked for its tabs closed; how many there were. */
     public function rejectAll(): int
     {
         $count = \count($this->pending);

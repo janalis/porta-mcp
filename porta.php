@@ -192,7 +192,7 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
                 Ide::VERSION,
                 $connection,
                 onClose: static function (ToolCaller $caller) use ($diffs, $presence): void {
-                    $diffs->rejectAll();
+                    $diffs->rejectFrom($caller);
                     $presence->left($caller);
                 },
                 structured: false,
