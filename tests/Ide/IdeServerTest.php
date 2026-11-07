@@ -112,6 +112,34 @@ final class IdeServerTest extends TestCase
         $this->assertSame(0, $server->clientCount());
     }
 
+    /**
+     * A client that sends CLOSE with answers still queued for it, and reads
+     * none of them: the close was flushed with a BLOCKING write, which held the
+     * whole IDE — here, the test itself — for as long as the client did not
+     * read. It is hung up on after a short linger, the loop never stopping.
+     */
+    public function testAClosingClientThatStopsReadingDoesNotHoldTheLoop(): void
+    {
+        $server = $this->server();
+        $server->start();
+        $this->connectCli($this->config->dir);
+        $this->assertIsResource($this->cli);
+        // Written whole, as a client would: one fwrite of a megabyte to a
+        // non-blocking socket sends part of it.
+        $writer = new NonBlockingWriter($this->cli, static fn (string $reason): null => null, 64 * 1_048_576);
+        $request = self::clientFrame('{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"echo","arguments":{"word":"'.\str_repeat('x', times: 1_048_576).'"}}}');
+        for ($i = 0; $i < 3; ++$i) {
+            $writer->write($request); // answers queue up: this client reads none of them
+        }
+        $writer->write(self::clientFrame("\x03\xe8", WebSocketFrames::CLOSE));
+
+        try {
+            $this->await(static fn (): bool => 0 === $server->clientCount(), timeout: 8.0, what: 'the closing client hung up on, after its linger');
+        } finally {
+            $writer->close();
+        }
+    }
+
     public function testStopHangsUpOnEveryClientAndTakesTheLockBack(): void
     {
         $server = $this->server();

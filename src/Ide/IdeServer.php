@@ -30,6 +30,9 @@ final class IdeServer
     /** Longer than any real upgrade request; a peer still sending headers past it is not one. */
     private const int MAX_HANDSHAKE = 16_384;
 
+    /** Seconds a closing client has to take what is still queued for it before it is hung up on anyway. */
+    private const float LINGER = 2.0;
+
     /** Seconds a client has to present its token before it is hung up on. */
     public const float HANDSHAKE_TIMEOUT = 10.0;
 
@@ -305,12 +308,25 @@ final class IdeServer
         $this->connections[$id]['handshake'] = $request;
     }
 
-    /** The client closed: close back, as the protocol asks, and hang up. */
+    /**
+     * The client closed: close back, as the protocol asks, and hang up — once
+     * the goodbye is out, or after a short linger, never blocking for it. A
+     * client that sent CLOSE and stopped reading, with answers still queued,
+     * held the whole IDE in a blocking write.
+     */
     private function close(int $id, string $payload): void
     {
-        $this->connections[$id]['writer']->write(WebSocketFrames::encode(\substr($payload, offset: 0, length: 2), WebSocketFrames::CLOSE));
-        $this->connections[$id]['writer']->flushBlocking();
-        $this->drop($id);
+        $connection = $this->connections[$id];
+        EventLoop::cancel($connection['watcher']); // nothing more is read from a client that said goodbye
+        $connection['writer']->write(WebSocketFrames::encode(\substr($payload, offset: 0, length: 2), WebSocketFrames::CLOSE));
+        if (0 === $connection['writer']->pendingBytes()) {
+            $this->drop($id);
+
+            return;
+        }
+        $connection['writer']->onDrain(fn () => $this->drop($id));
+        EventLoop::cancel($connection['deadline']);
+        $this->connections[$id]['deadline'] = EventLoop::delay(self::LINGER, fn () => $this->drop($id));
     }
 
     private function drop(int $id): void
