@@ -103,12 +103,15 @@ final class IdeServerTest extends TestCase
             $writer->write($request);
         }
 
+        // Awaited among what is logged, not taken as the first line: on a
+        // loaded box another goodbye could be logged ahead of it, and the
+        // test failed on a log that held the overflow too.
+        $overflow = 'Claude Code client dropped: write queue overflow';
         try {
-            $this->await(fn (): bool => [] !== $this->logged, what: 'the overflow to be logged');
+            $this->await(fn (): bool => \in_array($overflow, $this->logged, strict: true), what: 'the overflow to be logged');
         } finally {
             $writer->close();
         }
-        $this->assertSame('Claude Code client dropped: write queue overflow', $this->logged[0]);
         $this->assertSame(0, $server->clientCount());
     }
 
