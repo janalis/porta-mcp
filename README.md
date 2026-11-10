@@ -2,6 +2,8 @@
 
 An MCP server inside the IDE: agents read the buffers and diagnostics, navigate, edit, and call every tool other plugins offer.
 
+![The mcp page in Settings → Plugins](https://janalis.github.io/porta/screenshots/plugin-mcp.svg)
+
 This is `janalis/porta-mcp`, one of the plugins bundled with
 [Porta](https://github.com/janalis/porta), the terminal IDE for PHP. Porta
 ships it already: turn it on under **Settings → Plugins**. Install this
