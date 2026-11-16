@@ -35,23 +35,27 @@ final readonly class FileTools
         $path = static fn (string $what): array => ['type' => 'string', 'description' => $what.', project-relative or absolute'];
         $this->api->registerTool(
             'create_file',
-            'Create a file with the given text — its folders too — on disk. It is not opened; refused when the file exists.',
-            ['type' => 'object', 'properties' => ['path' => $path('The new file'), 'text' => ['type' => 'string', 'description' => 'Its content; empty when omitted']], 'required' => ['path']],
-            $this->create(...),
+            description: 'Create a file with the given text — its folders too — on disk. It is not opened; refused when the file exists.',
+            inputSchema: [
+                'type' => 'object',
+                'properties' => ['path' => $path('The new file'), 'text' => ['type' => 'string', 'description' => 'Its content; empty when omitted']],
+                'required' => ['path'],
+            ],
+            handler: $this->create(...),
             effect: ToolEffect::Writes,
         );
         $this->api->registerTool(
             'move_file',
-            'Rename or move a file or folder; a tab open on it follows, unsaved edits and all, and its local history moves with it. Refused when something is already at the target.',
-            ['type' => 'object', 'properties' => ['from' => $path('The file or folder'), 'to' => $path('Where it goes')], 'required' => ['from', 'to']],
-            $this->move(...),
+            description: 'Rename or move a file or folder; a tab open on it follows, unsaved edits and all, and its local history moves with it. Refused when something is already at the target.',
+            inputSchema: ['type' => 'object', 'properties' => ['from' => $path('The file or folder'), 'to' => $path('Where it goes')], 'required' => ['from', 'to']],
+            handler: $this->move(...),
             effect: ToolEffect::Writes,
         );
         $this->api->registerTool(
             'delete_file',
-            'Delete a file. Its text is kept in local history, where the user can restore it from Recent Changes. Refused for a folder, and for a file with unsaved edits in the editor — ask the user instead.',
-            ['type' => 'object', 'properties' => ['path' => $path('The file')], 'required' => ['path']],
-            $this->delete(...),
+            description: 'Delete a file. Its text is kept in local history, where the user can restore it from Recent Changes. Refused for a folder, and for a file with unsaved edits in the editor — ask the user instead.',
+            inputSchema: ['type' => 'object', 'properties' => ['path' => $path('The file')], 'required' => ['path']],
+            handler: $this->delete(...),
             effect: ToolEffect::Writes,
         );
     }

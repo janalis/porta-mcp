@@ -36,7 +36,7 @@ final class ToolCatalogTest extends TestCase
 
     public function testOwnToolsKeepTheirIdAndOtherPluginsArePrefixed(): void
     {
-        $catalog = self::catalog([self::tool('mcp', 'context'), self::tool('git', 'status')]);
+        $catalog = self::catalog([self::tool('mcp', id: 'context'), self::tool('git', id: 'status')]);
 
         $this->assertSame(
             [
@@ -66,12 +66,12 @@ final class ToolCatalogTest extends TestCase
             ],
             $hints,
         );
-        $this->assertArrayNotHasKey('annotations', self::catalog([self::tool('mcp', 'silent')])->describe()[0], 'no effect, no hints');
+        $this->assertArrayNotHasKey('annotations', self::catalog([self::tool('mcp', id: 'silent')])->describe()[0], 'no effect, no hints');
     }
 
     public function testEmptyPropertiesAreSentAsAJsonObject(): void
     {
-        $tool = self::tool('mcp', 'context');
+        $tool = self::tool('mcp', id: 'context');
         $tool['inputSchema'] = ['type' => 'object', 'properties' => []];
 
         $this->assertSame(
@@ -82,7 +82,7 @@ final class ToolCatalogTest extends TestCase
 
     public function testTheFirstRegistrationOfAWireNameWins(): void
     {
-        $catalog = self::catalog([self::tool('git', 'status', 'first'), self::tool('mcp', 'git_status', 'second')]);
+        $catalog = self::catalog([self::tool('git', id: 'status', answer: 'first'), self::tool('mcp', id: 'git_status', answer: 'second')]);
 
         $this->assertCount(1, $catalog->describe());
         $handler = $catalog->find('git_status');
@@ -92,7 +92,7 @@ final class ToolCatalogTest extends TestCase
 
     public function testAHiddenToolIsNeitherListedNorCallable(): void
     {
-        $catalog = self::catalog([self::tool('mcp', 'context'), self::tool('mcp', 'insert_text')], ['insert_text']);
+        $catalog = self::catalog([self::tool('mcp', id: 'context'), self::tool('mcp', id: 'insert_text')], ['insert_text']);
 
         $this->assertSame(['context'], \array_column($catalog->describe(), 'name'));
         $this->assertNull($catalog->find('insert_text'), 'hiding is the guard, not just the listing');
@@ -101,15 +101,15 @@ final class ToolCatalogTest extends TestCase
 
     public function testAWithheldEffectHidesEveryPluginsToolsThatHaveItWhileTheSwitchSaysSo(): void
     {
-        $comment = self::tool('review', 'comment');
+        $comment = self::tool('review', id: 'comment');
         $comment['effect'] = ToolEffect::Publishes;
-        $reply = self::tool('forge', 'reply');
+        $reply = self::tool('forge', id: 'reply');
         $reply['effect'] = ToolEffect::Publishes;
-        $threads = self::tool('review', 'threads');
+        $threads = self::tool('review', id: 'threads');
         $threads['effect'] = ToolEffect::Reads;
         $publish = false;
         $catalog = new ToolCatalog(
-            static fn (): array => [$comment, $threads, self::tool('mcp', 'context'), $reply],
+            static fn (): array => [$comment, $threads, self::tool('mcp', id: 'context'), $reply],
             'mcp',
             static fn (): array => [],
             static function () use (&$publish): array {
@@ -132,7 +132,7 @@ final class ToolCatalogTest extends TestCase
 
     public function testTheSetIsReadAfreshOnEveryCall(): void
     {
-        $tools = [self::tool('mcp', 'context')];
+        $tools = [self::tool('mcp', id: 'context')];
         $catalog = new ToolCatalog(
             static function () use (&$tools): array {
                 return $tools;
@@ -142,7 +142,7 @@ final class ToolCatalogTest extends TestCase
         );
         $this->assertCount(1, $catalog->describe());
 
-        $tools[] = self::tool('git', 'status');
+        $tools[] = self::tool('git', id: 'status');
 
         $this->assertCount(2, $catalog->describe());
     }

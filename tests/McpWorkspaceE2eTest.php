@@ -89,7 +89,7 @@ final class McpWorkspaceE2eTest extends TestCase
     public function testAgentsCreateMoveAndDeleteFilesAndLocalHistoryKeepsWhatTheyReplaced(): void
     {
         $off = self::project();
-        $this->runIde($off, null, [
+        $this->runIde($off, file: null, steps: [
             100 => function (Tui $tui, $terminal, Ide $ide) use ($off): void {
                 $this->connect($off);
                 $this->assertNotContains('delete_file', $this->names(), 'off by default');
@@ -109,14 +109,14 @@ final class McpWorkspaceE2eTest extends TestCase
 
                 $this->assertSame('Created '.$root.'/src/New/C.php', $this->ok('create_file', ['path' => 'src/New/C.php', 'text' => "<?php\n"]));
                 $this->assertSame("<?php\n", \file_get_contents($root.'/src/New/C.php'));
-                $this->awaitPainted($tui, $terminal, 'test editing C.php');
-                $this->refused('create_file', ['path' => 'src/B.php'], 'B.php already exists');
+                $this->awaitPainted($tui, $terminal, needle: 'test editing C.php');
+                $this->refused('create_file', ['path' => 'src/B.php'], says: 'B.php already exists');
                 $this->ok('replace_buffer', ['path' => 'src/New/C.php', 'text' => "<?php\n// c\n"]);
                 $this->assertSame("<?php\n", $history->read($history->list($root.'/src/New/C.php')[0]['file'] ?? ''), 'a replace keeps the version before it too, newest first');
                 // A file not there yet is judged by its folder's real place: through a link out, refused.
                 $outside = new TempProject([]);
                 \symlink($outside->dir, $project->path('out'));
-                $this->refused('create_file', ['path' => 'out/escaped.php', 'text' => 'x'], 'out/escaped.php is outside the project');
+                $this->refused('create_file', ['path' => 'out/escaped.php', 'text' => 'x'], says: 'out/escaped.php is outside the project');
                 $this->assertFileDoesNotExist($outside->path('escaped.php'));
                 \unlink($project->path('out'));
 
@@ -136,21 +136,21 @@ final class McpWorkspaceE2eTest extends TestCase
                     $this->json('context')['openFiles'],
                     'C, from the replace above, and A under its new name',
                 );
-                $this->awaitPainted($tui, $terminal, 'test editing A2.php');
+                $this->awaitPainted($tui, $terminal, needle: 'test editing A2.php');
                 $this->assertStringContainsString('// agent again', $this->ok('read_buffer', ['path' => 'lib/A2.php']));
                 $this->assertCount(1, $history->list($root.'/lib/A2.php'));
-                $this->refused('move_file', ['from' => 'nowhere.php', 'to' => 'x.php'], 'is not there to rename');
+                $this->refused('move_file', ['from' => 'nowhere.php', 'to' => 'x.php'], says: 'is not there to rename');
 
                 // A delete keeps the text in local history; unsaved edits and folders are refused.
-                $this->refused('delete_file', ['path' => 'lib/A2.php'], 'unsaved changes');
-                $this->refused('delete_file', ['path' => 'src/New'], 'is a folder');
+                $this->refused('delete_file', ['path' => 'lib/A2.php'], says: 'unsaved changes');
+                $this->refused('delete_file', ['path' => 'src/New'], says: 'is a folder');
                 $this->assertStringContainsString('restorable from Recent Changes', $this->ok('delete_file', ['path' => 'src/B.php']));
                 $this->assertFileDoesNotExist($root.'/src/B.php');
                 $this->assertSame(["<?php\n// b\n"], \array_map(static fn (array $row): ?string => $history->read($row['file']), $history->list($root.'/src/B.php')));
 
                 // What the status cell's menu does: local history's own list, asked for by id.
                 Services::resolve($ide, EventDispatcherInterface::class)->dispatch(new CommandRunRequested('local-history:recent_changes'));
-                $this->awaitPainted($tui, $terminal, 'B.php');
+                $this->awaitPainted($tui, $terminal, needle: 'B.php');
                 $this->assertStringContainsString('Recent Changes', \implode("\n", $this->screenGrid($tui, $terminal)));
             },
         ]);
@@ -189,11 +189,11 @@ final class McpWorkspaceE2eTest extends TestCase
                 $this->assertSame(['// needle one'], \array_column($this->json('search', ['query' => 'needle\s+one', 'regex' => true])['matches'], 'text'));
                 $this->assertSame([], $this->json('search', ['query' => 'need', 'wholeWord' => true])['matches']);
 
-                $this->refused('search', ['query' => ' '], 'query is required');
-                $this->refused('search', ['query' => 'x', 'regex' => 'yes'], 'regex is true or false');
-                $this->refused('search', ['query' => 'x', 'paths' => 'src'], 'paths is a list of paths');
-                $this->refused('search', ['query' => 'x', 'paths' => ['src', 3]], 'paths is a list of paths');
-                $this->refused('search', ['query' => 'x', 'paths' => ['../elsewhere']], 'is outside the project');
+                $this->refused('search', ['query' => ' '], says: 'query is required');
+                $this->refused('search', ['query' => 'x', 'regex' => 'yes'], says: 'regex is true or false');
+                $this->refused('search', ['query' => 'x', 'paths' => 'src'], says: 'paths is a list of paths');
+                $this->refused('search', ['query' => 'x', 'paths' => ['src', 3]], says: 'paths is a list of paths');
+                $this->refused('search', ['query' => 'x', 'paths' => ['../elsewhere']], says: 'is outside the project');
             },
         ]);
     }
@@ -226,16 +226,16 @@ final class McpWorkspaceE2eTest extends TestCase
                 // Another writer changed the file while the buffer held edits.
                 $this->ok('replace_buffer', ['text' => "<?php\n// mine\n"]);
                 Services::resolve($ide, BufferManager::class)->get($a)->diskChangedUnderEdit = true;
-                $this->refused('save_buffer', [], 'it changed on disk since it was opened');
+                $this->refused('save_buffer', [], says: 'it changed on disk since it was opened');
                 $this->assertSame("<?php\n// saved by the agent\n", \file_get_contents($a), 'the other writer\'s file is untouched');
             },
         ]);
 
         $empty = self::project(['allowSave' => true]);
-        $this->runIde($empty, null, [
+        $this->runIde($empty, file: null, steps: [
             100 => function (Tui $tui, $terminal, Ide $ide) use ($empty): void {
                 $this->connect($empty);
-                $this->refused('save_buffer', [], 'No file is open');
+                $this->refused('save_buffer', [], says: 'No file is open');
             },
         ]);
     }
@@ -330,18 +330,18 @@ final class McpWorkspaceE2eTest extends TestCase
                 $answer = \json_decode($this->answer($waiting)['result']['content'][0]['text'], associative: true, flags: \JSON_THROW_ON_ERROR);
                 $this->assertSame('Stopped before it finished: the run was replaced or its tab closed', $answer['note']);
 
-                $this->refused('run', ['label' => 'nope'], 'No run configuration "nope" — there are: Run current file: Slow.php');
-                $this->refused('run_output', ['label' => 'nope'], 'No run "nope" has been started');
-                $this->refused('run_tests', ['wait' => 'no'], 'wait is true or false');
+                $this->refused('run', ['label' => 'nope'], says: 'No run configuration "nope" — there are: Run current file: Slow.php');
+                $this->refused('run_output', ['label' => 'nope'], says: 'No run "nope" has been started');
+                $this->refused('run_tests', ['wait' => 'no'], says: 'wait is true or false');
                 $this->assertInstanceOf(TerminalSession::class, Services::resolve($ide, RunController::class)->runSession('phpunit'), 'the runs are tabs in the terminal panel');
             },
         ]);
 
         $bare = self::project(['allowRuns' => true]);
-        $this->runIde($bare, null, [
+        $this->runIde($bare, file: null, steps: [
             100 => function (Tui $tui, $terminal, Ide $ide) use ($bare): void {
                 $this->connect($bare);
-                $this->refused('run_tests', [], 'This project has no vendor/bin/phpunit');
+                $this->refused('run_tests', [], says: 'This project has no vendor/bin/phpunit');
             },
         ]);
     }

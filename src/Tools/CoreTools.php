@@ -47,22 +47,22 @@ final readonly class CoreTools
         $path = static fn (string $what): array => ['type' => 'string', 'description' => $what.', project-relative or absolute'];
         $this->api->registerTool(
             'context',
-            'What the user has in front of them: the project root, the active file and caret, the files selected in the tree, and every open tab with whether it has unsaved edits.',
-            self::NO_ARGUMENTS,
-            $this->context(...),
+            description: 'What the user has in front of them: the project root, the active file and caret, the files selected in the tree, and every open tab with whether it has unsaved edits.',
+            inputSchema: self::NO_ARGUMENTS,
+            handler: $this->context(...),
             effect: ToolEffect::Reads,
         );
         $this->api->registerTool(
             'selection',
-            'What the user has selected in the active file: the text, and where it starts and ends (1-based line and column) — or that nothing is.',
-            self::NO_ARGUMENTS,
-            $this->selection(...),
+            description: 'What the user has selected in the active file: the text, and where it starts and ends (1-based line and column) — or that nothing is.',
+            inputSchema: self::NO_ARGUMENTS,
+            handler: $this->selection(...),
             effect: ToolEffect::Reads,
         );
         $this->api->registerTool(
             'read_buffer',
-            'The text of a file OPEN in the editor, unsaved edits included — the disk copy may be older. Without a path, the active file; startLine and endLine (1-based, inclusive) read part of it.',
-            [
+            description: 'The text of a file OPEN in the editor, unsaved edits included — the disk copy may be older. Without a path, the active file; startLine and endLine (1-based, inclusive) read part of it.',
+            inputSchema: [
                 'type' => 'object',
                 'properties' => [
                     'path' => $path('An open file'),
@@ -71,13 +71,13 @@ final readonly class CoreTools
                     'lineNumbers' => ['type' => 'boolean', 'description' => 'Prefix each line with its number and a tab'],
                 ],
             ],
-            $this->readBuffer(...),
+            handler: $this->readBuffer(...),
             effect: ToolEffect::Reads,
         );
         $this->api->registerTool(
             'open_file',
-            'Open a file in the editor and bring it to the front, optionally at a line and column (1-based).',
-            [
+            description: 'Open a file in the editor and bring it to the front, optionally at a line and column (1-based).',
+            inputSchema: [
                 'type' => 'object',
                 'properties' => [
                     'path' => $path('The file'),
@@ -86,20 +86,20 @@ final readonly class CoreTools
                 ],
                 'required' => ['path'],
             ],
-            $this->openFile(...),
+            handler: $this->openFile(...),
             effect: ToolEffect::Edits,
         );
         $this->api->registerTool(
             'diagnostics',
-            'Errors and warnings the language servers and analysers reported for the open files — or one of them — with 1-based positions; endColumn, when the finding ends on its line, is its last column. Files that are not open have none here.',
-            ['type' => 'object', 'properties' => ['path' => $path('An open file')]],
-            $this->diagnostics(...),
+            description: 'Errors and warnings the language servers and analysers reported for the open files — or one of them — with 1-based positions; endColumn, when the finding ends on its line, is its last column. Files that are not open have none here.',
+            inputSchema: ['type' => 'object', 'properties' => ['path' => $path('An open file')]],
+            handler: $this->diagnostics(...),
             effect: ToolEffect::Reads,
         );
         $this->api->registerTool(
             'notify',
-            'Show the user a short message in the IDE.',
-            [
+            description: 'Show the user a short message in the IDE.',
+            inputSchema: [
                 'type' => 'object',
                 'properties' => [
                     'message' => ['type' => 'string'],
@@ -107,13 +107,13 @@ final readonly class CoreTools
                 ],
                 'required' => ['message'],
             ],
-            $this->notify(...),
+            handler: $this->notify(...),
             effect: ToolEffect::Edits,
         );
         $this->api->registerTool(
             'edit_buffer',
-            'Replace one exact piece of a file\'s text in the editor (opening it behind the user\'s tab if needed) as ONE undoable edit: oldText must occur exactly once in the text as read_buffer shows it — include enough of the lines around it. Not saved to disk: the user reviews it and saves.',
-            [
+            description: 'Replace one exact piece of a file\'s text in the editor (opening it behind the user\'s tab if needed) as ONE undoable edit: oldText must occur exactly once in the text as read_buffer shows it — include enough of the lines around it. Not saved to disk: the user reviews it and saves.',
+            inputSchema: [
                 'type' => 'object',
                 'properties' => [
                     'path' => $path('The file; the active one when omitted'),
@@ -122,32 +122,32 @@ final readonly class CoreTools
                 ],
                 'required' => ['oldText', 'newText'],
             ],
-            $this->editBuffer(...),
+            handler: $this->editBuffer(...),
             effect: ToolEffect::Edits,
         );
         $this->api->registerTool(
             'replace_buffer',
-            'Replace the whole text of a file in the editor (opening it behind the user\'s tab if needed) as ONE undoable edit. Not saved to disk: the user reviews it and saves.',
-            [
+            description: 'Replace the whole text of a file in the editor (opening it behind the user\'s tab if needed) as ONE undoable edit. Not saved to disk: the user reviews it and saves.',
+            inputSchema: [
                 'type' => 'object',
                 'properties' => ['path' => $path('The file; the active one when omitted'), 'text' => ['type' => 'string']],
                 'required' => ['text'],
             ],
-            $this->replaceBuffer(...),
+            handler: $this->replaceBuffer(...),
             effect: ToolEffect::Edits,
         );
         $this->api->registerTool(
             'insert_text',
-            'Insert text at the caret of the active file, as one undoable edit. Not saved to disk.',
-            ['type' => 'object', 'properties' => ['text' => ['type' => 'string']], 'required' => ['text']],
-            $this->insertText(...),
+            description: 'Insert text at the caret of the active file, as one undoable edit. Not saved to disk.',
+            inputSchema: ['type' => 'object', 'properties' => ['text' => ['type' => 'string']], 'required' => ['text']],
+            handler: $this->insertText(...),
             effect: ToolEffect::Edits,
         );
         $this->api->registerTool(
             self::SAVE,
-            'Save an open file to disk, as the user\'s Ctrl+S does. A file that changed on disk since it was opened is refused, never overwritten — tell the user instead. Without a path, the active file.',
-            ['type' => 'object', 'properties' => ['path' => $path('An open file')]],
-            $this->saveBuffer(...),
+            description: 'Save an open file to disk, as the user\'s Ctrl+S does. A file that changed on disk since it was opened is refused, never overwritten — tell the user instead. Without a path, the active file.',
+            inputSchema: ['type' => 'object', 'properties' => ['path' => $path('An open file')]],
+            handler: $this->saveBuffer(...),
             effect: ToolEffect::Writes,
         );
     }
@@ -276,7 +276,7 @@ final readonly class CoreTools
             'error' => ToastSeverity::Error,
             default => ToastSeverity::Info,
         };
-        $this->api->notify($message, $severity, 5.0);
+        $this->api->notify($message, $severity, seconds: 5.0);
 
         return 'Shown';
     }
@@ -289,7 +289,7 @@ final readonly class CoreTools
         $old = (string) $this->api->openBuffers()->text($target);
         [$endLine, $endColumn] = self::lineAndColumn($old, \strlen($old));
         $this->presence->before($caller, $target, $old);
-        $this->change($target, 0, 0, $endLine, $endColumn, $text);
+        $this->change($target, line: 0, column: 0, endLine: $endLine, endColumn: $endColumn, text: $text);
         $this->presence->editing($caller, $target);
 
         return \sprintf('Replaced the text of %s — unsaved; the user can undo it in one step', $target);

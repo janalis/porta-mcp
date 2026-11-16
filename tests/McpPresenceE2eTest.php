@@ -65,7 +65,7 @@ final class McpPresenceE2eTest extends TestCase
     private function agentMenu(PluginLifecycle $lifecycle): array
     {
         $cell = \array_find(
-            Probe::get($lifecycle, 'plugins')->statusSegments(),
+            Probe::get($lifecycle, property: 'plugins')->statusSegments(),
             static fn (mixed $segment): bool => $segment instanceof StatusCell && \str_contains($segment->text, Glyphs::AGENT),
         );
         $this->assertInstanceOf(StatusCell::class, $cell);
@@ -83,21 +83,21 @@ final class McpPresenceE2eTest extends TestCase
                 $this->connect($project);
 
                 $this->ok('edit_buffer', ['oldText' => '// first', 'newText' => '// edited']);
-                $this->await(fn (): bool => \str_contains($this->rowWith($tui, $terminal, '// edited'), self::LABEL), what: 'the name at the edited line');
+                $this->await(fn (): bool => \str_contains($this->rowWith($tui, $terminal, text: '// edited'), self::LABEL), what: 'the name at the edited line');
                 $this->assertStringContainsString(Glyphs::AGENT.' test editing A.php', $this->screen($tui, $terminal), 'the status bar says who does what');
                 $this->assertStringContainsString('A.php '.Glyphs::AGENT, $this->screen($tui, $terminal), 'the tab carries the star');
-                Services::resolve($ide, BufferManager::class)->active()?->document->setCursor(0, 0);
+                Services::resolve($ide, BufferManager::class)->active()?->document->setCursor(0, col: 0);
                 $go = $this->agentMenu(Services::resolve($ide, PluginLifecycle::class))[0]->run;
                 $this->assertNotNull($go);
                 $go();
                 $this->assertSame(2, $this->json('context')['caret']['line'] ?? null, 'Go to: the line the agent is on');
 
                 $this->ok('read_buffer', ['startLine' => 3]);
-                $this->await(fn (): bool => \str_contains($this->rowWith($tui, $terminal, "echo 'a'"), self::LABEL), what: 'the name moved to the line read');
-                $this->assertStringNotContainsString(self::LABEL, $this->rowWith($tui, $terminal, '// edited'), 'one caret per agent and file');
+                $this->await(fn (): bool => \str_contains($this->rowWith($tui, $terminal, text: "echo 'a'"), self::LABEL), what: 'the name moved to the line read');
+                $this->assertStringNotContainsString(self::LABEL, $this->rowWith($tui, $terminal, text: '// edited'), 'one caret per agent and file');
                 $this->assertStringContainsString('test reading A.php', $this->screen($tui, $terminal));
 
-                $this->await(fn (): bool => !\str_contains($this->rowWith($tui, $terminal, "echo 'a'"), self::LABEL), timeout: 8.0, what: 'the fade after two quiet seconds');
+                $this->await(fn (): bool => !\str_contains($this->rowWith($tui, $terminal, text: "echo 'a'"), self::LABEL), timeout: 8.0, what: 'the fade after two quiet seconds');
             },
         ]);
     }
@@ -113,17 +113,17 @@ final class McpPresenceE2eTest extends TestCase
                 $this->ok('edit_buffer', ['path' => 'src/B.php', 'oldText' => '<?php', 'newText' => '<?php // b']);
                 $this->await(fn (): bool => \str_contains($this->screen($tui, $terminal), 'B.php '.Glyphs::AGENT), what: 'the background tab starred');
                 $this->assertStringContainsString('A.php '.Glyphs::AGENT, $this->screen($tui, $terminal), 'and the one in front');
-                $this->assertStringNotContainsString(self::LABEL, $this->rowWith($tui, $terminal, '// edited'), 'no cursor with showAgentCursor off');
+                $this->assertStringNotContainsString(self::LABEL, $this->rowWith($tui, $terminal, text: '// edited'), 'no cursor with showAgentCursor off');
 
                 // Turned off live: what is on screen goes at once.
                 $lifecycle = Services::resolve($ide, PluginLifecycle::class);
-                $settings = Probe::get(Probe::get($lifecycle, 'plugins'), 'settings');
+                $settings = Probe::get(Probe::get($lifecycle, property: 'plugins'), property: 'settings');
                 $this->assertInstanceOf(PluginSettings::class, $settings);
-                $settings->change('mcp', 'showAgents', false);
-                $lifecycle->onPluginSettingChanged('mcp', 'showAgents', false);
+                $settings->change('mcp', key: 'showAgents', value: false);
+                $lifecycle->onPluginSettingChanged('mcp', key: 'showAgents', value: false);
                 $this->await(fn (): bool => !\str_contains($this->screen($tui, $terminal), Glyphs::AGENT), what: 'the marks gone with the setting');
-                $settings->change('mcp', 'showAgents', true);
-                $lifecycle->onPluginSettingChanged('mcp', 'showAgents', true);
+                $settings->change('mcp', key: 'showAgents', value: true);
+                $lifecycle->onPluginSettingChanged('mcp', key: 'showAgents', value: true);
                 $this->ok('read_buffer');
                 $this->await(fn (): bool => \str_contains($this->screen($tui, $terminal), 'A.php '.Glyphs::AGENT), what: 'back with the next report');
 
@@ -140,10 +140,10 @@ final class McpPresenceE2eTest extends TestCase
                 $this->assertContains('Nothing answers to local-history:recent_changes — is its plugin enabled?', Toasts::all($ide), 'local history is off in this project, and the user hears so');
                 $this->assertNotNull($items[3]->run);
                 ($items[3]->run)();
-                $this->assertFalse($settings->value('mcp', 'showAgents'), 'turned off');
+                $this->assertFalse($settings->value('mcp', key: 'showAgents'), 'turned off');
                 $this->await(fn (): bool => !\str_contains($this->screen($tui, $terminal), Glyphs::AGENT), what: 'the marks gone from the menu');
-                $settings->change('mcp', 'showAgents', true);
-                $lifecycle->onPluginSettingChanged('mcp', 'showAgents', true);
+                $settings->change('mcp', key: 'showAgents', value: true);
+                $lifecycle->onPluginSettingChanged('mcp', key: 'showAgents', value: true);
                 $this->ok('read_buffer');
                 $this->await(fn (): bool => \str_contains($this->screen($tui, $terminal), Glyphs::AGENT), what: 'shown again before the client goes');
 

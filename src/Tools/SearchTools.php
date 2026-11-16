@@ -81,7 +81,7 @@ final readonly class SearchTools
         $engine = new ProjectSearch($root);
 
         /** @var list<array{path: string, line: int, text: string}>|null $rows */
-        $rows = FiberWait::within(self::TIMEOUT, static fn (\Closure $done) => $engine->search($query, $done, $options, $scope, $mask), null);
+        $rows = FiberWait::within(self::TIMEOUT, static fn (\Closure $done) => $engine->search($query, $done, $options, $scope, $mask), timedOut: null);
         if (null === $rows) {
             // A grep that never finishes needs a filesystem trap no test can
             // build the same way on every platform.

@@ -81,7 +81,7 @@ final class IdeServerTest extends TestCase
         $this->assertSame(1, $server->clientCount(), 'the one still sending headers is not a client');
 
         $server->broadcast('selection_changed', ['filePath' => '/p/a.php']);
-        $broadcast = $this->cliAwait(static fn (array $m): bool => 'selection_changed' === ($m['method'] ?? null), 'the broadcast');
+        $broadcast = $this->cliAwait(static fn (array $m): bool => 'selection_changed' === ($m['method'] ?? null), what: 'the broadcast');
         $this->assertSame(['jsonrpc' => '2.0', 'method' => 'selection_changed', 'params' => ['filePath' => '/p/a.php']], $broadcast, 'a JSON-RPC notification');
         \stream_set_blocking($half, enable: false);
         $this->assertSame('', (string) \fread($half, length: 100), 'and it heard nothing');
@@ -203,7 +203,7 @@ final class IdeServerTest extends TestCase
         $server->start();
         $port = (int) $server->port();
 
-        [, $answer] = $this->upgrade($port, self::upgradeRequest($port, $this->lock($this->config->dir)['token'], "Sec-WebSocket-Protocol: chat, mcp\r\nA line with no colon\r\n"));
+        [, $answer] = $this->upgrade($port, self::upgradeRequest($port, $this->lock($this->config->dir)['token'], extra: "Sec-WebSocket-Protocol: chat, mcp\r\nA line with no colon\r\n"));
 
         $this->assertStringStartsWith('HTTP/1.1 101', $answer);
         $this->assertStringContainsString("\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n", $answer, 'the RFC\'s own example key, answered');
@@ -216,7 +216,8 @@ final class IdeServerTest extends TestCase
         $server->start();
         $port = (int) $server->port();
 
-        [$this->cli, $answer] = $this->upgrade($port, self::upgradeRequest($port, 'wrong'));
+        // @mago-expect lint:no-literal-password -- a test fixture value, named since mago 1.60
+        [$this->cli, $answer] = $this->upgrade($port, self::upgradeRequest($port, token: 'wrong'));
         $this->cliFrames = new WebSocketFrames();
 
         $this->assertStringStartsWith('HTTP/1.1 401', $answer);
@@ -253,7 +254,7 @@ final class IdeServerTest extends TestCase
         $this->assertFalse($server->takeNewcomer(), 'shaking hands is not saying ide_connected');
 
         $this->cliWrite(self::clientFrame('{"method":"ide_connected"}', WebSocketFrames::PING));
-        $this->assertSame('{"method":"ide_connected"}', $this->cliAwaitFrame(WebSocketFrames::PONG, 'the pong'));
+        $this->assertSame('{"method":"ide_connected"}', $this->cliAwaitFrame(WebSocketFrames::PONG, what: 'the pong'));
         $this->assertFalse($server->takeNewcomer(), 'a ping that says it is no message');
 
         $this->cliNotify('ide_connected', ['pid' => 1]);

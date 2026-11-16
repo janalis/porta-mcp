@@ -80,12 +80,14 @@ final class LockFileTest extends TestCase
 
     public function testWhereItCannotBeWrittenItSaysSo(): void
     {
-        $blocked = $this->dir->write('file', 'in the way');
+        $blocked = $this->dir->write('file', content: 'in the way');
 
-        $this->assertSame($blocked.'/ide could not be created', new LockFile($blocked.'/ide')->write(1, [], 't'));
+        // @mago-expect lint:no-literal-password -- a test fixture value, named since mago 1.60
+        $this->assertSame($blocked.'/ide could not be created', new LockFile($blocked.'/ide')->write(1, [], token: 't'));
 
         \mkdir($this->dir->path('readonly'), permissions: 0o500);
-        $this->assertSame($this->dir->path('readonly').' is not writable', new LockFile($this->dir->path('readonly'))->write(1, [], 't'));
+        // @mago-expect lint:no-literal-password -- a test fixture value, named since mago 1.60
+        $this->assertSame($this->dir->path('readonly').' is not writable', new LockFile($this->dir->path('readonly'))->write(1, [], token: 't'));
         \chmod($this->dir->path('readonly'), permissions: 0o700);
     }
 
@@ -104,7 +106,7 @@ final class LockFileTest extends TestCase
         foreach ($locks as $name => $lock) {
             $this->dir->write('ide/'.$name.'.lock', (string) \json_encode($lock, \JSON_THROW_ON_ERROR));
         }
-        $this->dir->write('ide/garbled.lock', '{');
+        $this->dir->write('ide/garbled.lock', content: '{');
 
         new LockFile($this->dir->path('ide'))->sweep();
 

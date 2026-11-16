@@ -87,55 +87,55 @@ final readonly class CodeTools
         ];
         $this->api->registerTool(
             'definition',
-            'Where the symbol at a position is declared, asked of the language server — any file of the project, open or not. Each location has its path, 1-based line and column, and the line\'s text.',
-            $at,
-            fn (array $arguments, ToolCaller $caller): array => $this->locations($arguments, $this->api->codeIntelligence()->definition(...), $caller),
+            description: 'Where the symbol at a position is declared, asked of the language server — any file of the project, open or not. Each location has its path, 1-based line and column, and the line\'s text.',
+            inputSchema: $at,
+            handler: fn (array $arguments, ToolCaller $caller): array => $this->locations($arguments, $this->api->codeIntelligence()->definition(...), $caller),
             effect: ToolEffect::Reads,
         );
         $this->api->registerTool(
             'references',
-            'Every place the symbol at a position is used, its declaration included, asked of the language server — the precise answer a text search for its name is not.',
-            $at,
-            fn (array $arguments, ToolCaller $caller): array => $this->locations($arguments, $this->api->codeIntelligence()->references(...), $caller),
+            description: 'Every place the symbol at a position is used, its declaration included, asked of the language server — the precise answer a text search for its name is not.',
+            inputSchema: $at,
+            handler: fn (array $arguments, ToolCaller $caller): array => $this->locations($arguments, $this->api->codeIntelligence()->references(...), $caller),
             effect: ToolEffect::Reads,
         );
         $this->api->registerTool(
             'hover',
-            'What the language server says about the symbol at a position: its signature and documentation, as text.',
-            $at,
-            $this->hover(...),
+            description: 'What the language server says about the symbol at a position: its signature and documentation, as text.',
+            inputSchema: $at,
+            handler: $this->hover(...),
             effect: ToolEffect::Reads,
         );
         $this->api->registerTool(
             'symbols',
-            'The project\'s classes, functions, methods and other symbols whose name matches a query, from the running language server.',
-            ['type' => 'object', 'properties' => ['query' => ['type' => 'string']], 'required' => ['query']],
-            $this->symbols(...),
+            description: 'The project\'s classes, functions, methods and other symbols whose name matches a query, from the running language server.',
+            inputSchema: ['type' => 'object', 'properties' => ['query' => ['type' => 'string']], 'required' => ['query']],
+            handler: $this->symbols(...),
             effect: ToolEffect::Reads,
         );
         $this->api->registerTool(
             'outline',
-            'What one file declares — classes, their methods and properties, functions — outermost first, each with its kind, 1-based line and column, and how deep it is nested; from the language server, any file of the project, open or not.',
-            ['type' => 'object', 'properties' => ['path' => $at['properties']['path']], 'required' => ['path']],
-            $this->outline(...),
+            description: 'What one file declares — classes, their methods and properties, functions — outermost first, each with its kind, 1-based line and column, and how deep it is nested; from the language server, any file of the project, open or not.',
+            inputSchema: ['type' => 'object', 'properties' => ['path' => $at['properties']['path']], 'required' => ['path']],
+            handler: $this->outline(...),
             effect: ToolEffect::Reads,
         );
         $this->api->registerTool(
             self::RENAME,
-            'Rename the symbol at a position everywhere the language server finds it, as the editor\'s Rename does: open files are edited and left unsaved, files that are not open are REWRITTEN on disk, and the user takes it all back with Undo Refactoring.',
-            [
+            description: 'Rename the symbol at a position everywhere the language server finds it, as the editor\'s Rename does: open files are edited and left unsaved, files that are not open are REWRITTEN on disk, and the user takes it all back with Undo Refactoring.',
+            inputSchema: [
                 'type' => 'object',
                 'properties' => [...$at['properties'], 'newName' => ['type' => 'string']],
                 'required' => ['path', 'line', 'newName'],
             ],
-            $this->rename(...),
+            handler: $this->rename(...),
             effect: ToolEffect::Writes,
         );
         $this->api->registerTool(
             self::FORMAT,
-            'Format a file as its language server does, by the file\'s own indentation — opening it behind the user\'s tab if needed — as ONE undoable edit. Not saved to disk. Without a path, the active file.',
-            ['type' => 'object', 'properties' => ['path' => $at['properties']['path']]],
-            $this->format(...),
+            description: 'Format a file as its language server does, by the file\'s own indentation — opening it behind the user\'s tab if needed — as ONE undoable edit. Not saved to disk. Without a path, the active file.',
+            inputSchema: ['type' => 'object', 'properties' => ['path' => $at['properties']['path']]],
+            handler: $this->format(...),
             effect: ToolEffect::Edits,
         );
     }
@@ -320,6 +320,6 @@ final readonly class CodeTools
     {
         $seconds = ($this->timeout)();
 
-        return FiberWait::within($seconds, $start, null) ?? throw new \RuntimeException(\sprintf('The language server did not answer within %ds', $seconds));
+        return FiberWait::within($seconds, $start, timedOut: null) ?? throw new \RuntimeException(\sprintf('The language server did not answer within %ds', $seconds));
     }
 }

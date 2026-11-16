@@ -67,7 +67,7 @@ final class WebSocketFramesTest extends TestCase
     {
         $frames = new WebSocketFrames();
 
-        $messages = $frames->feed(self::masked('{"a":', final: false).self::masked('', WebSocketFrames::PING).self::masked('1}', 0x0));
+        $messages = $frames->feed(self::masked('{"a":', final: false).self::masked('', WebSocketFrames::PING).self::masked('1}', opcode: 0x0));
 
         $this->assertSame(
             [
@@ -90,7 +90,7 @@ final class WebSocketFramesTest extends TestCase
         $this->assertSame([[WebSocketFrames::TEXT, '0123456789']], new WebSocketFrames(maxMessage: 10)->feed(self::masked('0123456789')));
 
         $frames = new WebSocketFrames(maxMessage: 10);
-        $this->assertSame([[WebSocketFrames::TEXT, '0123456789']], $frames->feed(self::masked('01234', final: false).self::masked('56789', 0x0)));
+        $this->assertSame([[WebSocketFrames::TEXT, '0123456789']], $frames->feed(self::masked('01234', final: false).self::masked('56789', opcode: 0x0)));
     }
 
     public function testAFrameOrAMessagePastTheCapIsRefused(): void
@@ -105,6 +105,6 @@ final class WebSocketFramesTest extends TestCase
         $frames = new WebSocketFrames(maxMessage: 10);
         $frames->feed(self::masked('123456', final: false));
         $this->expectExceptionMessageIsOrContains('a message past 10 bytes');
-        $frames->feed(self::masked('789012', 0x0));
+        $frames->feed(self::masked('789012', opcode: 0x0));
     }
 }

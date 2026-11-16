@@ -127,7 +127,7 @@ final class Presence
         // Local history's, by id: everything an agent replaced or deleted is
         // listed there, and this plugin does not depend on that one.
         $items[] = new MenuItem($this->api->trans('Recent Changes'), '', fn () => $this->api->emit(new CommandRunRequested('local-history:recent_changes')));
-        $items[] = new MenuItem($this->api->trans('Stop showing agents'), '', fn () => $this->api->changeSetting('showAgents', false));
+        $items[] = new MenuItem($this->api->trans('Stop showing agents'), '', fn () => $this->api->changeSetting('showAgents', value: false));
 
         return $items;
     }

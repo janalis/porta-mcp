@@ -41,9 +41,9 @@ final readonly class RunTools
         $wait = ['type' => 'boolean', 'description' => 'Wait for it to end (default true); false answers at once — read it later with run_output'];
         $this->api->registerTool(
             'run_configurations',
-            'What the IDE\'s Run menu offers right now: the active PHP file, the composer scripts, the Makefile targets.',
-            ['type' => 'object', 'properties' => []],
-            fn (array $arguments): array => \array_map(
+            description: 'What the IDE\'s Run menu offers right now: the active PHP file, the composer scripts, the Makefile targets.',
+            inputSchema: ['type' => 'object', 'properties' => []],
+            handler: fn (array $arguments): array => \array_map(
                 static fn (array $task): array => ['label' => $task['label'], 'command' => \implode(' ', $task['command'])],
                 $this->api->runs()->configurations(),
             ),
@@ -51,15 +51,15 @@ final readonly class RunTools
         );
         $this->api->registerTool(
             'run',
-            'Run one of run_configurations by its label, in a tab of the IDE\'s terminal panel, and answer with its exit code and the end of its output.',
-            ['type' => 'object', 'properties' => ['label' => ['type' => 'string'], 'wait' => $wait], 'required' => ['label']],
-            $this->run(...),
+            description: 'Run one of run_configurations by its label, in a tab of the IDE\'s terminal panel, and answer with its exit code and the end of its output.',
+            inputSchema: ['type' => 'object', 'properties' => ['label' => ['type' => 'string'], 'wait' => $wait], 'required' => ['label']],
+            handler: $this->run(...),
             effect: ToolEffect::Writes,
         );
         $this->api->registerTool(
             'run_tests',
-            'Run the project\'s PHPUnit tests — all of them, one file or directory, and/or those matching a filter — in the IDE\'s terminal panel, and answer with the exit code and the end of the output.',
-            [
+            description: 'Run the project\'s PHPUnit tests — all of them, one file or directory, and/or those matching a filter — in the IDE\'s terminal panel, and answer with the exit code and the end of the output.',
+            inputSchema: [
                 'type' => 'object',
                 'properties' => [
                     'path' => ['type' => 'string', 'description' => 'A test file or directory, project-relative'],
@@ -67,7 +67,7 @@ final readonly class RunTools
                     'wait' => $wait,
                 ],
             ],
-            $this->tests(...),
+            handler: $this->tests(...),
             effect: ToolEffect::Writes,
         );
         $this->api->registerTool(
@@ -144,7 +144,7 @@ final readonly class RunTools
     private function start(string $title, array $command, Arguments $read): array
     {
         $runs = $this->api->runs();
-        $wait = $read->flagOr('wait', true);
+        $wait = $read->flagOr('wait', default: true);
         if (!$wait) {
             $runs->start($title, $command);
 
@@ -152,7 +152,7 @@ final readonly class RunTools
         }
         $seconds = ($this->timeout)();
         /** @var int|null $code */
-        $code = FiberWait::within($seconds, static fn (\Closure $done) => $runs->start($title, $command, $done), null);
+        $code = FiberWait::within($seconds, static fn (\Closure $done) => $runs->start($title, $command, $done), timedOut: null);
         $result = ['label' => $title] + ($runs->output($title) ?? ['running' => false, 'exitCode' => null, 'output' => '']);
         if (null === $code) {
             $result['note'] = \sprintf('Still running after %ds — read it with run_output', $seconds);

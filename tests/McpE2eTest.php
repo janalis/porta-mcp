@@ -56,7 +56,7 @@ final class McpE2eTest extends TestCase
         $a = (string) \realpath($project->path('src/A.php'));
         $b = (string) \realpath($project->path('src/B.php'));
 
-        $this->runIde($project, null, [
+        $this->runIde($project, file: null, steps: [
             100 => function (Tui $tui, $terminal, Ide $ide) use ($project, $a, $b): void {
                 $this->connect($project);
                 $names = \array_column($this->request('tools/list')['result']['tools'], 'name');
@@ -89,9 +89,9 @@ final class McpE2eTest extends TestCase
                 $this->assertNull($context['caret']);
                 $this->assertSame([], $context['selectedFiles']);
                 $this->assertSame([], $context['openFiles']);
-                $this->refused('read_buffer', [], 'No file is open');
-                $this->refused('insert_text', ['text' => 'x'], 'No text file is active');
-                $this->refused('replace_buffer', ['text' => 'x'], 'No text file to edit');
+                $this->refused('read_buffer', [], says: 'No file is open');
+                $this->refused('insert_text', ['text' => 'x'], says: 'No text file is active');
+                $this->refused('replace_buffer', ['text' => 'x'], says: 'No text file to edit');
 
                 // Opening: at a line and column, and the refusals.
                 $this->assertSame('Opened '.$a, $this->ok('open_file', ['path' => 'src/A.php', 'line' => 2, 'column' => 3]));
@@ -100,17 +100,17 @@ final class McpE2eTest extends TestCase
                 $this->assertSame(['line' => 2, 'column' => 1], $this->json('context')['caret'], 'the column defaults to the first');
                 $this->ok('open_file', ['path' => 'src/A.php']);
                 $this->assertSame($a, $this->json('context')['activeFile']);
-                $this->refused('open_file', [], 'path is required');
-                $this->refused('open_file', ['path' => ''], 'path is required');
-                $this->refused('open_file', ['path' => 'src'], 'is not a file');
-                $this->refused('open_file', ['path' => 'src/A.php', 'line' => 0], 'line is a positive integer');
-                $this->refused('open_file', ['path' => 'src/A.php', 'line' => '2'], 'line is a positive integer');
-                $this->refused('open_file', ['path' => 7], 'path is a string');
-                $this->refused('open_file', ['path' => '../outside.php'], '../outside.php is outside the project');
-                $this->refused('open_file', ['path' => '/etc/hosts'], 'is outside the project');
+                $this->refused('open_file', [], says: 'path is required');
+                $this->refused('open_file', ['path' => ''], says: 'path is required');
+                $this->refused('open_file', ['path' => 'src'], says: 'is not a file');
+                $this->refused('open_file', ['path' => 'src/A.php', 'line' => 0], says: 'line is a positive integer');
+                $this->refused('open_file', ['path' => 'src/A.php', 'line' => '2'], says: 'line is a positive integer');
+                $this->refused('open_file', ['path' => 7], says: 'path is a string');
+                $this->refused('open_file', ['path' => '../outside.php'], says: '../outside.php is outside the project');
+                $this->refused('open_file', ['path' => '/etc/hosts'], says: 'is outside the project');
                 // A link inside the project is judged by where it LEADS.
                 \symlink('/etc/hosts', $project->path('hosts.txt'));
-                $this->refused('open_file', ['path' => 'hosts.txt'], 'hosts.txt is outside the project');
+                $this->refused('open_file', ['path' => 'hosts.txt'], says: 'hosts.txt is outside the project');
 
                 $this->assertSame(
                     [['path' => $a, 'dirty' => false], ['path' => $b, 'dirty' => false]],
@@ -120,8 +120,8 @@ final class McpE2eTest extends TestCase
                 // Reading: the active file, another open one, one not open.
                 $this->assertSame("<?php\necho 'a';\n", $this->ok('read_buffer'));
                 $this->assertSame("<?php\necho 'b';\n", $this->ok('read_buffer', ['path' => 'src/B.php']));
-                $project->write('src/C.php', "<?php\n");
-                $this->refused('read_buffer', ['path' => 'src/C.php'], 'is not open in the editor');
+                $project->write('src/C.php', content: "<?php\n");
+                $this->refused('read_buffer', ['path' => 'src/C.php'], says: 'is not open in the editor');
             },
             200 => function (Tui $tui, $terminal, Ide $ide) use ($a, $b): void {
                 // Editing: never saved, and undone in one step.
@@ -139,9 +139,9 @@ final class McpE2eTest extends TestCase
                 $this->assertSame("<?php\n// b2\n", $this->ok('read_buffer', ['path' => 'src/B.php']), 'an open file behind, by path');
                 $this->ok('replace_buffer', ['path' => 'src/C.php', 'text' => "<?php\n// c\n"]);
                 $this->assertSame("<?php\n// c\n", $this->ok('read_buffer', ['path' => 'src/C.php']), 'a closed file is opened first');
-                $this->refused('replace_buffer', ['path' => 'src/D.php', 'text' => 'x'], 'is not a file');
-                $this->refused('replace_buffer', ['path' => 'img.png', 'text' => 'x'], 'img.png is not one');
-                $this->refused('replace_buffer', [], 'text is required');
+                $this->refused('replace_buffer', ['path' => 'src/D.php', 'text' => 'x'], says: 'is not a file');
+                $this->refused('replace_buffer', ['path' => 'img.png', 'text' => 'x'], says: 'img.png is not one');
+                $this->refused('replace_buffer', [], says: 'text is required');
 
                 $this->ok('open_file', ['path' => 'src/A.php', 'line' => 1, 'column' => 1]);
                 $this->assertStringEndsWith(' — unsaved', $inserted = $this->ok('insert_text', ['text' => '// top'."\n"]));
@@ -154,9 +154,9 @@ final class McpE2eTest extends TestCase
                 $buffers->applyDiagnostics(
                     Uri::fromPath($a),
                     [2 => [['severity' => DiagnosticSeverity::Error, 'message' => 'Undefined', 'col' => 5, 'endCol' => 8, 'code' => 42, 'source' => 'phpstan']]],
-                    'phpstan',
+                    owner: 'phpstan',
                 );
-                $buffers->applyDiagnostics(Uri::fromPath($b), [0 => [['severity' => DiagnosticSeverity::Hint, 'message' => 'Unused', 'col' => 0, 'endCol' => 0]]], 'lsp');
+                $buffers->applyDiagnostics(Uri::fromPath($b), [0 => [['severity' => DiagnosticSeverity::Hint, 'message' => 'Unused', 'col' => 0, 'endCol' => 0]]], owner: 'lsp');
 
                 $this->assertSame(
                     [
@@ -175,7 +175,7 @@ final class McpE2eTest extends TestCase
                 }
                 $this->assertContains('said error', Toasts::all($ide));
                 $this->assertContains('Tests pass', Toasts::all($ide));
-                $this->refused('notify', ['message' => ' '], 'message is required');
+                $this->refused('notify', ['message' => ' '], says: 'message is required');
             },
         ]);
 
@@ -201,8 +201,8 @@ final class McpE2eTest extends TestCase
                 $this->assertSame("2\t<?php\n3\techo 'a';", $this->ok('read_buffer', ['startLine' => 2, 'endLine' => 3, 'lineNumbers' => true]));
                 $this->assertSame("echo 'a';\n", $this->ok('read_buffer', ['startLine' => 3]), 'to the end');
                 $this->assertSame("1\t// top\n2\t<?php\n3\techo 'a';\n4\t", $this->ok('read_buffer', ['lineNumbers' => true]));
-                $this->refused('read_buffer', ['startLine' => 9], 'has 4 lines');
-                $this->refused('read_buffer', ['startLine' => 3, 'endLine' => 2], 'lines 3 to 2 are not among them');
+                $this->refused('read_buffer', ['startLine' => 9], says: 'has 4 lines');
+                $this->refused('read_buffer', ['startLine' => 3, 'endLine' => 2], says: 'lines 3 to 2 are not among them');
 
                 // One exact piece, one undo step.
                 $this->assertSame('Edited '.$a.' at line 3 — unsaved; the user can undo it in one step', $this->ok('edit_buffer', ['oldText' => "'a'", 'newText' => "'é'\n// more"]));
@@ -213,9 +213,9 @@ final class McpE2eTest extends TestCase
                 $tui->handleInput("\x1a"); // ctrl+z
                 $this->assertSame("// top\n<?php\necho 'é'\n// more;\n", $this->ok('read_buffer'), 'each edit is one undo step');
                 $this->refused('edit_buffer', ['oldText' => 'nowhere', 'newText' => 'x'], 'oldText is not in '.$a);
-                $this->refused('edit_buffer', ['oldText' => '//', 'newText' => 'x'], 'oldText occurs 2 times');
-                $this->refused('edit_buffer', ['oldText' => '', 'newText' => 'x'], 'oldText is empty');
-                $this->refused('edit_buffer', ['oldText' => 'x'], 'newText is required');
+                $this->refused('edit_buffer', ['oldText' => '//', 'newText' => 'x'], says: 'oldText occurs 2 times');
+                $this->refused('edit_buffer', ['oldText' => '', 'newText' => 'x'], says: 'oldText is empty');
+                $this->refused('edit_buffer', ['oldText' => 'x'], says: 'newText is required');
                 $this->ok('edit_buffer', ['path' => 'src/B.php', 'oldText' => "'b'", 'newText' => "'b3'"]);
                 $this->assertSame("<?php\necho 'b3';\n", $this->ok('read_buffer', ['path' => 'src/B.php']), 'a closed file, opened behind');
                 $this->assertSame($a, $this->json('context')['activeFile'], 'the user\'s tab stays in front');
@@ -291,14 +291,14 @@ final class McpE2eTest extends TestCase
                 $this->assertSame('symbol', $symbols[1]['kind'], 'a kind nobody named');
 
                 // Every way it can say no.
-                $this->refused('definition', ['path' => 'src/B.php', 'line' => 9], 'Index not ready');
-                $this->refused('hover', ['path' => 'src/B.php', 'line' => 9], 'Index not ready');
-                $this->refused('symbols', ['query' => 'boom'], 'Index not ready');
-                $this->refused('hover', ['path' => 'src/B.php', 'line' => 10], 'The language server did not answer within 1s');
-                $this->refused('definition', ['path' => 'README.md', 'line' => 1], 'No language server is configured for README.md');
-                $this->refused('definition', ['path' => 'src/B.php'], 'line is required');
-                $this->refused('references', ['line' => 1], 'path is required');
-                $this->refused('symbols', [], 'query is required');
+                $this->refused('definition', ['path' => 'src/B.php', 'line' => 9], says: 'Index not ready');
+                $this->refused('hover', ['path' => 'src/B.php', 'line' => 9], says: 'Index not ready');
+                $this->refused('symbols', ['query' => 'boom'], says: 'Index not ready');
+                $this->refused('hover', ['path' => 'src/B.php', 'line' => 10], says: 'The language server did not answer within 1s');
+                $this->refused('definition', ['path' => 'README.md', 'line' => 1], says: 'No language server is configured for README.md');
+                $this->refused('definition', ['path' => 'src/B.php'], says: 'line is required');
+                $this->refused('references', ['line' => 1], says: 'path is required');
+                $this->refused('symbols', [], says: 'query is required');
                 $this->assertSame([['path' => $b, 'dirty' => false]], $this->json('context')['openFiles'], 'no tab was opened for A');
             },
         ]);
@@ -339,8 +339,8 @@ final class McpE2eTest extends TestCase
                     $this->json('outline', ['path' => 'src/A.php']),
                     'a file nobody has open, nested, 1-based',
                 );
-                $this->refused('outline', [], 'path is required');
-                $this->refused('outline', ['path' => 'README.md'], 'No language server is configured for README.md');
+                $this->refused('outline', [], says: 'path is required');
+                $this->refused('outline', ['path' => 'README.md'], says: 'No language server is configured for README.md');
 
                 // Formatting: the open file, by its own indentation, one undo step.
                 $this->assertSame('Formatted '.$b.' — unsaved; the user can undo it in one step', $this->ok('format'));
@@ -350,8 +350,8 @@ final class McpE2eTest extends TestCase
                 $this->assertSame($a.' is already formatted', $this->ok('format', ['path' => 'src/A.php']), 'a closed file is opened first');
                 $this->assertSame($b, $this->json('context')['activeFile'], 'opened behind the user\'s tab');
                 $this->assertContains($a, \array_column($this->json('context')['openFiles'], 'path'));
-                $this->refused('format', ['path' => 'src/D.php'], 'is not a file');
-                $this->refused('format', ['path' => 'README.md'], 'No language server is configured for README.md');
+                $this->refused('format', ['path' => 'src/D.php'], says: 'is not a file');
+                $this->refused('format', ['path' => 'README.md'], says: 'No language server is configured for README.md');
             },
             200 => function (Tui $tui, $terminal, Ide $ide) use ($project, $a, $b, $c): void {
                 // Renaming: open files edited and unsaved, the others rewritten.
@@ -379,9 +379,9 @@ final class McpE2eTest extends TestCase
                 $this->assertSame("<?php\nclass A {}\n", \file_get_contents($a), 'an open file stays unsaved');
                 $this->assertSame("<?php\nnew Z();\n", \file_get_contents($c), 'a file that is not open is rewritten');
 
-                $this->refused('rename', ['path' => 'src/A.php', 'line' => 2, 'newName' => 'boom'], 'Index not ready');
-                $this->refused('rename', ['path' => 'src/A.php', 'line' => 2, 'newName' => 'nothing'], 'cannot rename anything at this position');
-                $this->refused('rename', ['path' => 'src/A.php', 'line' => 2, 'newName' => ' '], 'newName is required');
+                $this->refused('rename', ['path' => 'src/A.php', 'line' => 2, 'newName' => 'boom'], says: 'Index not ready');
+                $this->refused('rename', ['path' => 'src/A.php', 'line' => 2, 'newName' => 'nothing'], says: 'cannot rename anything at this position');
+                $this->refused('rename', ['path' => 'src/A.php', 'line' => 2, 'newName' => ' '], says: 'newName is required');
             },
         ]);
     }
@@ -392,7 +392,7 @@ final class McpE2eTest extends TestCase
         $project = self::project('{"enabledPlugins":["mcp","diff","git"]}');
         $project->initGit('main');
         $project->commitAll('first');
-        $project->write('src/A.php', "<?php\necho 'changed';\n");
+        $project->write('src/A.php', content: "<?php\necho 'changed';\n");
 
         $this->runIde($project, $project->path('src/A.php'), [
             100 => function (Tui $tui, $terminal, Ide $ide) use ($project): void {
@@ -405,16 +405,16 @@ final class McpE2eTest extends TestCase
                 // A setting the tool list depends on, changed live.
                 $lifecycle = Services::resolve($ide, PluginLifecycle::class);
                 // Neither the manager nor its settings is a public service.
-                $settings = Probe::get(Probe::get($lifecycle, 'plugins'), 'settings');
+                $settings = Probe::get(Probe::get($lifecycle, property: 'plugins'), property: 'settings');
                 $this->assertInstanceOf(PluginSettings::class, $settings, 'the manager holds the plugin settings');
-                $settings->change('mcp', 'allowEdits', false);
-                $lifecycle->onPluginSettingChanged('mcp', 'allowEdits', false);
-                $this->awaitMessage(static fn (array $m): bool => 'notifications/tools/list_changed' === ($m['method'] ?? null), 'the setting change announced');
+                $settings->change('mcp', key: 'allowEdits', value: false);
+                $lifecycle->onPluginSettingChanged('mcp', key: 'allowEdits', value: false);
+                $this->awaitMessage(static fn (array $m): bool => 'notifications/tools/list_changed' === ($m['method'] ?? null), what: 'the setting change announced');
                 $this->assertNotContains('insert_text', \array_column($this->request('tools/list')['result']['tools'], 'name'));
 
                 // A plugin that offers tools, disabled live.
                 $lifecycle->disable('git');
-                $this->awaitMessage(static fn (array $m): bool => 'notifications/tools/list_changed' === ($m['method'] ?? null), 'the disable announced');
+                $this->awaitMessage(static fn (array $m): bool => 'notifications/tools/list_changed' === ($m['method'] ?? null), what: 'the disable announced');
                 $this->assertNotContains('git_status', \array_column($this->request('tools/list')['result']['tools'], 'name'));
             },
         ]);
@@ -427,7 +427,7 @@ final class McpE2eTest extends TestCase
         $other = \stream_socket_server('unix://'.$project->path('.porta/mcp.sock'));
         $this->assertNotFalse($other);
 
-        $this->runIde($project, null, [
+        $this->runIde($project, file: null, steps: [
             100 => function (Tui $tui, $terminal, Ide $ide): void {
                 $this->assertContains('Another Porta is already serving MCP for this project', Toasts::all($ide));
             },

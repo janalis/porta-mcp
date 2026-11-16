@@ -49,13 +49,13 @@ final class LineChangeTest extends TestCase
 
     public function testTheSameTextIsNoEdit(): void
     {
-        $this->assertNull(LineChange::between("a\nb\n", "a\nb\n"));
-        $this->assertSame([0, 0], LineChange::between('old', 'new')?->start, 'all of it: from the very start, never a line before the first');
+        $this->assertNull(LineChange::between("a\nb\n", to: "a\nb\n"));
+        $this->assertSame([0, 0], LineChange::between('old', to: 'new')?->start, 'all of it: from the very start, never a line before the first');
     }
 
     public function testOnlyTheChangedLinesAreInTheEdit(): void
     {
-        $change = LineChange::between("1\n2\n3\n4\n5\n", "1\n2\nX\n4\n5\n");
+        $change = LineChange::between("1\n2\n3\n4\n5\n", to: "1\n2\nX\n4\n5\n");
 
         $this->assertInstanceOf(LineChange::class, $change);
         $this->assertSame([[2, 0], [3, 0], "X\n"], [$change->start, $change->end, $change->text]);

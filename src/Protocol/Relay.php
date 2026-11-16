@@ -93,7 +93,7 @@ final class Relay
     public function offline(string $line): ?string
     {
         if (null === self::decodable($line)) {
-            return self::error(null, Session::PARSE_ERROR, 'Parse error');
+            return self::error(null, Session::PARSE_ERROR, message: 'Parse error');
         }
         $message = self::decode($line);
         $method = \is_string($message['method'] ?? null) ? $message['method'] : null;
@@ -126,7 +126,7 @@ final class Relay
         foreach ($this->pending as $key => $id) {
             $answers[] = \array_key_exists($key, $this->initializing)
                 ? $this->answerInitialize($id, $this->handshake ?? [])
-                : self::error($id, Session::INVALID_REQUEST, 'Porta closed while this call ran — it may have done part of it');
+                : self::error($id, Session::INVALID_REQUEST, message: 'Porta closed while this call ran — it may have done part of it');
         }
         $this->pending = [];
         $this->initializing = [];

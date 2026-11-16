@@ -101,7 +101,8 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $this->assertSame((string) $lock['port'], \getenv('CLAUDE_CODE_SSE_PORT'), 'a claude started in the terminal connects by itself');
                 $this->assertSame('true', \getenv('ENABLE_IDE_INTEGRATION'));
 
-                [, $refused] = $this->upgrade($lock['port'], self::upgradeRequest($lock['port'], 'wrong'));
+                // @mago-expect lint:no-literal-password -- a test fixture value, named since mago 1.60
+                [, $refused] = $this->upgrade($lock['port'], self::upgradeRequest($lock['port'], token: 'wrong'));
                 $this->assertStringStartsWith('HTTP/1.1 401', $refused, 'no token, no connection');
 
                 $answer = $this->connectCli($this->config->dir);
@@ -109,7 +110,7 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $this->assertStringContainsString("Sec-WebSocket-Protocol: mcp\r\n", $answer, 'the subprotocol it asked for');
 
                 $this->cliNotify('ide_connected', ['pid' => 1]);
-                $selection = $this->cliAwait(static fn (array $m): bool => self::isSelection($m, 'src/A.php'), 'the open file');
+                $selection = $this->cliAwait(static fn (array $m): bool => self::isSelection($m, file: 'src/A.php'), what: 'the open file');
                 $this->assertSame(
                     [
                         'text' => '',
@@ -119,7 +120,7 @@ final class McpClaudeCodeE2eTest extends TestCase
                     ],
                     $selection['params'],
                 );
-                $this->cliAwait(static fn (array $m): bool => self::isSelection($m, 'src/A.php'), 'the same, said again on the heartbeat');
+                $this->cliAwait(static fn (array $m): bool => self::isSelection($m, file: 'src/A.php'), what: 'the same, said again on the heartbeat');
 
                 $this->assertSame(
                     [['success' => true, 'folders' => [['name' => \basename($root), 'uri' => 'file://'.$root, 'path' => $root]], 'rootPath' => $root], false],
@@ -145,7 +146,7 @@ final class McpClaudeCodeE2eTest extends TestCase
                         2 => [['severity' => DiagnosticSeverity::Warning, 'message' => 'Unused', 'col' => 5, 'endCol' => 8, 'source' => 'phpstan']],
                         0 => [['severity' => DiagnosticSeverity::Error, 'message' => 'Boom', 'col' => 0]],
                     ],
-                    'test',
+                    owner: 'test',
                 );
                 $this->assertSame(
                     [
@@ -172,35 +173,35 @@ final class McpClaudeCodeE2eTest extends TestCase
 
                 // The CLI opens a file here, at the text it names; the selection follows.
                 $this->assertSame(['Opened file: '.$root.'/src/B.php', false], $this->cliCall('openFile', ['filePath' => $root.'/src/B.php', 'startText' => 'second']));
-                $moved = $this->cliAwait(static fn (array $m): bool => self::isSelection($m, 'src/B.php'), 'the selection in the file just opened');
+                $moved = $this->cliAwait(static fn (array $m): bool => self::isSelection($m, file: 'src/B.php'), what: 'the selection in the file just opened');
                 $this->assertSame(1, $moved['params']['selection']['start']['line']);
                 $this->cliCall('openFile', ['filePath' => $a]);
-                $this->cliAwait(static fn (array $m): bool => self::isSelection($m, 'src/A.php'), 'back to A');
+                $this->cliAwait(static fn (array $m): bool => self::isSelection($m, file: 'src/A.php'), what: 'back to A');
             },
             200 => function (Tui $tui, $terminal, Ide $ide) use ($a): void {
                 $tui->handleInput("\x1b[1;2B"); // shift+down: the first line selected
-                $selected = $this->cliAwait(static fn (array $m): bool => self::isSelection($m, 'src/A.php') && false === $m['params']['selection']['isEmpty'], 'the selection');
+                $selected = $this->cliAwait(static fn (array $m): bool => self::isSelection($m, file: 'src/A.php') && false === $m['params']['selection']['isEmpty'], what: 'the selection');
                 $this->assertSame("<?php\n", $selected['params']['text']);
                 $this->assertSame(['line' => 1, 'character' => 0], $selected['params']['selection']['end']);
 
                 // "Send selection to Claude Code": an @ mention of those lines.
                 Services::resolve($ide, CommandRegistry::class)->run('mcp:mention_in_claude');
-                $mention = $this->cliAwait(static fn (array $m): bool => 'at_mentioned' === ($m['method'] ?? null), 'the mention');
+                $mention = $this->cliAwait(static fn (array $m): bool => 'at_mentioned' === ($m['method'] ?? null), what: 'the mention');
                 $this->assertSame(['filePath' => $a, 'lineStart' => 0, 'lineEnd' => 0], $mention['params'], 'the line it ends at the start of is not in it');
                 $tui->handleInput("\x1b[1;2C"); // shift+right: into the second line
                 Services::resolve($ide, CommandRegistry::class)->run('mcp:mention_in_claude');
-                $mention = $this->cliAwait(static fn (array $m): bool => 'at_mentioned' === ($m['method'] ?? null), 'the mention, a character on');
+                $mention = $this->cliAwait(static fn (array $m): bool => 'at_mentioned' === ($m['method'] ?? null), what: 'the mention, a character on');
                 $this->assertSame(['filePath' => $a, 'lineStart' => 0, 'lineEnd' => 1], $mention['params']);
                 $tui->handleInput("\x1b[B"); // the selection cleared
-                $this->cliAwait(static fn (array $m): bool => self::isSelection($m, 'src/A.php') && true === $m['params']['selection']['isEmpty'], 'no selection');
+                $this->cliAwait(static fn (array $m): bool => self::isSelection($m, file: 'src/A.php') && true === $m['params']['selection']['isEmpty'], what: 'no selection');
                 Services::resolve($ide, CommandRegistry::class)->run('mcp:mention_in_claude');
-                $this->assertSame(['filePath' => $a], $this->cliAwait(static fn (array $m): bool => 'at_mentioned' === ($m['method'] ?? null), 'a mention of the file')['params']);
+                $this->assertSame(['filePath' => $a], $this->cliAwait(static fn (array $m): bool => 'at_mentioned' === ($m['method'] ?? null), what: 'a mention of the file')['params']);
 
                 // The transport's own frames.
                 $this->cliWrite(self::clientFrame('beat', WebSocketFrames::PING));
-                $this->assertSame('beat', $this->cliAwaitFrame(WebSocketFrames::PONG, 'the pong'));
+                $this->assertSame('beat', $this->cliAwaitFrame(WebSocketFrames::PONG, what: 'the pong'));
                 $this->cliWrite(self::clientFrame('ignored', WebSocketFrames::PONG).self::clientFrame("\x03\xE8bye", WebSocketFrames::CLOSE));
-                $this->assertSame("\x03\xE8", $this->cliAwaitFrame(WebSocketFrames::CLOSE, 'the close answered'));
+                $this->assertSame("\x03\xE8", $this->cliAwaitFrame(WebSocketFrames::CLOSE, what: 'the close answered'));
                 $this->await($this->cliClosed(...), what: 'the hang-up');
 
                 Services::resolve($ide, CommandRegistry::class)->run('mcp:mention_in_claude');
@@ -216,12 +217,12 @@ final class McpClaudeCodeE2eTest extends TestCase
     {
         $project = self::project();
 
-        $this->runIde($project, null, [
+        $this->runIde($project, file: null, steps: [
             100 => function (Tui $tui, $terminal, Ide $ide): void {
                 $lock = $this->lock($this->config->dir);
 
                 // A handshake in pieces, with a frame riding its last one.
-                $request = self::upgradeRequest($lock['port'], $lock['token'], '');
+                $request = self::upgradeRequest($lock['port'], $lock['token'], extra: '');
                 $stream = \stream_socket_client('tcp://127.0.0.1:'.$lock['port'], timeout: 1.0);
                 $this->assertNotFalse($stream);
                 \stream_set_blocking($stream, enable: false);
@@ -238,7 +239,7 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $this->assertStringStartsWith('HTTP/1.1 101', $head);
                 $this->assertStringNotContainsString('Sec-WebSocket-Protocol', $head, 'not asked, not named');
                 $this->cliInbox = $this->cliFrames->feed(\explode("\r\n\r\n", $head, limit: 2)[1]);
-                $this->assertSame(7, $this->cliAwait(static fn (array $m): bool => 7 === ($m['id'] ?? null), 'the ping that rode the handshake')['id']);
+                $this->assertSame(7, $this->cliAwait(static fn (array $m): bool => 7 === ($m['id'] ?? null), what: 'the ping that rode the handshake')['id']);
                 $this->assertSame([['success' => false, 'message' => 'No active editor found'], false], $this->cliCall('getCurrentSelection'), 'nothing open');
                 $this->assertSame([['success' => false, 'message' => 'No active editor found'], false], $this->cliCall('getLatestSelection'));
                 Services::resolve($ide, CommandRegistry::class)->run('mcp:mention_in_claude');
@@ -255,14 +256,14 @@ final class McpClaudeCodeE2eTest extends TestCase
 
                 // Turned off live: unannounced, unlistened; on again: a new lock.
                 $lifecycle = Services::resolve($ide, PluginLifecycle::class);
-                $settings = Probe::get(Probe::get($lifecycle, 'plugins'), 'settings');
+                $settings = Probe::get(Probe::get($lifecycle, property: 'plugins'), property: 'settings');
                 $this->assertInstanceOf(PluginSettings::class, $settings);
-                $settings->change('mcp', 'claudeCode', false);
-                $lifecycle->onPluginSettingChanged('mcp', 'claudeCode', false);
+                $settings->change('mcp', key: 'claudeCode', value: false);
+                $lifecycle->onPluginSettingChanged('mcp', key: 'claudeCode', value: false);
                 $this->assertSame([], \glob($this->config->dir.'/ide/*.lock'));
                 $this->assertFalse(\getenv('CLAUDE_CODE_SSE_PORT'));
-                $settings->change('mcp', 'claudeCode', true);
-                $lifecycle->onPluginSettingChanged('mcp', 'claudeCode', true);
+                $settings->change('mcp', key: 'claudeCode', value: true);
+                $lifecycle->onPluginSettingChanged('mcp', key: 'claudeCode', value: true);
                 $this->assertCount(1, (array) \glob($this->config->dir.'/ide/*.lock'));
             },
         ]);
@@ -270,7 +271,7 @@ final class McpClaudeCodeE2eTest extends TestCase
 
     public function testWhereItCannotBeAnnouncedTheUserIsTold(): void
     {
-        \putenv('CLAUDE_CONFIG_DIR='.$this->config->write('not-a-dir', 'x'));
+        \putenv('CLAUDE_CONFIG_DIR='.$this->config->write('not-a-dir', content: 'x'));
         $project = self::project();
 
         $this->runIde($project, $project->path('src/A.php'), [
@@ -278,12 +279,12 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $this->assertContains('The Claude Code connection could not be announced: '.$this->config->dir.'/not-a-dir/ide could not be created', Toasts::all($ide));
 
                 $lifecycle = Services::resolve($ide, PluginLifecycle::class);
-                $settings = Probe::get(Probe::get($lifecycle, 'plugins'), 'settings');
+                $settings = Probe::get(Probe::get($lifecycle, property: 'plugins'), property: 'settings');
                 $this->assertInstanceOf(PluginSettings::class, $settings);
-                $settings->change('mcp', 'claudeCode', false);
-                $lifecycle->onPluginSettingChanged('mcp', 'claudeCode', false);
-                $settings->change('mcp', 'claudeCode', true);
-                $lifecycle->onPluginSettingChanged('mcp', 'claudeCode', true);
+                $settings->change('mcp', key: 'claudeCode', value: false);
+                $lifecycle->onPluginSettingChanged('mcp', key: 'claudeCode', value: false);
+                $settings->change('mcp', key: 'claudeCode', value: true);
+                $lifecycle->onPluginSettingChanged('mcp', key: 'claudeCode', value: true);
                 $this->assertCount(2, \array_filter(Toasts::all($ide), static fn (string $toast): bool => \str_contains($toast, 'could not be announced')), 'turned on again, told again');
             },
         ]);
@@ -315,7 +316,7 @@ final class McpClaudeCodeE2eTest extends TestCase
     private function verdict(int $id): array
     {
         /** @var array{result: array{content: list<array{text: string}>}} $answer */
-        $answer = $this->cliAwait(static fn (array $m): bool => $id === ($m['id'] ?? null), 'the verdict');
+        $answer = $this->cliAwait(static fn (array $m): bool => $id === ($m['id'] ?? null), what: 'the verdict');
 
         return \array_column($answer['result']['content'], 'text');
     }
@@ -380,7 +381,10 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $this->connectCli($this->config->dir);
                 $tui->handleInput("\x1b[1;2B"); // shift+down, then shift+right: past the é
                 $tui->handleInput("\x1b[1;2C");
-                $across = $this->cliAwait(static fn (array $m): bool => self::isSelection($m, 'src/A.php') && 1 === ($m['params']['selection']['end']['line'] ?? null), 'the selection past the é');
+                $across = $this->cliAwait(
+                    static fn (array $m): bool => self::isSelection($m, file: 'src/A.php') && 1 === ($m['params']['selection']['end']['line'] ?? null),
+                    what: 'the selection past the é',
+                );
                 $this->assertSame(['line' => 1, 'character' => 1], $across['params']['selection']['end'], 'é is two bytes and one UTF-16 unit');
                 $this->assertSame("<?php\né", $across['params']['text']);
 
@@ -433,12 +437,12 @@ final class McpClaudeCodeE2eTest extends TestCase
                 );
                 $unsaved = $this->cliCall('saveDocument', ['filePath' => $root.'/src/B.php'])[0];
                 $this->assertSame([false, false], [$unsaved['success'], $unsaved['saved']]);
-                Services::resolve($ide, BufferService::class)->applyDiagnostics(Uri::fromPath($a), [0 => [['severity' => DiagnosticSeverity::Error, 'message' => 'Boom', 'col' => 0]]], 'test');
+                Services::resolve($ide, BufferService::class)->applyDiagnostics(Uri::fromPath($a), [0 => [['severity' => DiagnosticSeverity::Error, 'message' => 'Boom', 'col' => 0]]], owner: 'test');
                 Services::resolve($ide, BufferService::class)->openFile($root.'/src/B.php', OpenFocus::Background);
                 Services::resolve($ide, BufferService::class)->applyDiagnostics(
                     Uri::fromPath($root.'/src/B.php'),
                     [1 => [['severity' => DiagnosticSeverity::Hint, 'message' => 'Note', 'col' => 0]]],
-                    'test',
+                    owner: 'test',
                 );
                 $this->assertSame(['file://'.$a, 'file://'.$root.'/src/B.php'], \array_column($this->cliCall('getDiagnostics')[0], 'uri'), 'each file with some');
                 $this->assertSame(['file://'.$a], \array_column($this->cliCall('getDiagnostics', ['uri' => 'file://'.$a])[0], 'uri'), 'the one asked about, alone');
@@ -478,16 +482,16 @@ final class McpClaudeCodeE2eTest extends TestCase
                 );
 
                 // The same text proposed: shown, nothing to change, still the user's call.
-                $id = $this->propose($tui, $terminal, $root.'/src/B.php', "<?php\n", 'B.php (same)');
+                $id = $this->propose($tui, $terminal, $root.'/src/B.php', text: "<?php\n", tab: 'B.php (same)');
                 $this->assertContains('Claude proposes changes to B.php — Ctrl+Alt+Y keep · Ctrl+Alt+U put back', Toasts::all($ide), 'shown side by side, it is settled by keys');
                 $this->assertFalse($buffers->get($root.'/src/B.php')?->isDirty());
-                $this->awaitPainted($tui, $terminal, 'No difference: the proposal is the text as it is');
+                $this->awaitPainted($tui, $terminal, needle: 'No difference: the proposal is the text as it is');
                 $tui->handleInput("\x1b\x15"); // ctrl+alt+u: put back
                 $this->assertSame(['DIFF_REJECTED', 'B.php (same)'], $this->verdict($id));
                 $this->assertContains('Put B.php back as it was', Toasts::all($ide));
 
                 // Accepted, after the user touched it up: answered as it stands, for the CLI to write.
-                $id = $this->propose($tui, $terminal, $a, "<?php\n// one\n// TWO\n// three\n", 'A.php (edit)');
+                $id = $this->propose($tui, $terminal, $a, text: "<?php\n// one\n// TWO\n// three\n", tab: 'A.php (edit)');
                 $this->assertSame($a, $buffers->active()?->path, 'brought forward to be read');
                 $this->assertSame("<?php\n// one\n// TWO\n// three\n", $buffers->get($a)?->document->getText());
                 $this->assertSame(2, $buffers->get($a)?->document->cursorLine, 'the caret on the change');
@@ -498,8 +502,8 @@ final class McpClaudeCodeE2eTest extends TestCase
                 );
                 $this->assertSame([$root.'/src/B.php', $a], \array_column($offered, 0), 'each proposal offered side by side: the file as it is…');
                 $this->assertSame(['A.php', "<?php\n// one\n// TWO\n// three\n"], [\basename($offered[1][1]), $offered[1][2]], '…and a copy of the proposal, under its name');
-                $this->awaitPainted($tui, $terminal, '- // two');
-                $this->awaitPainted($tui, $terminal, '+ // TWO');
+                $this->awaitPainted($tui, $terminal, needle: '- // two');
+                $this->awaitPainted($tui, $terminal, needle: '+ // TWO');
                 $this->assertStringContainsString('// one', \implode("\n", $this->screenGrid($tui, $terminal)), 'with the line before it');
                 $buffers->get($a)?->document->insert('!');
                 $tui->handleInput("\x1b\x19"); // ctrl+alt+y: keep
@@ -514,7 +518,7 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $this->assertDirectoryDoesNotExist(\dirname($offered[1][1]));
 
                 // Rejected: the old text back.
-                $id = $this->propose($tui, $terminal, $a, "<?php\n", 'A.php (cut)');
+                $id = $this->propose($tui, $terminal, $a, text: "<?php\n", tab: 'A.php (cut)');
                 $this->assertSame("<?php\n", $buffers->get($a)?->document->getText(), 'lines at the end go, newline and all');
                 $tui->handleInput("\x1b\x15"); // ctrl+alt+u
                 $this->assertSame(['DIFF_REJECTED', 'A.php (cut)'], $this->verdict($id));
@@ -522,13 +526,13 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $this->assertFalse($buffers->get($a)?->isDirty(), 'back to what is on disk');
 
                 // A second proposal under the same tab replaces the first.
-                $first = $this->propose($tui, $terminal, $a, "<?php\n// first\n", 'A.php');
-                $second = $this->propose($tui, $terminal, $a, "<?php\n// second\n", 'A.php');
+                $first = $this->propose($tui, $terminal, $a, text: "<?php\n// first\n", tab: 'A.php');
+                $second = $this->propose($tui, $terminal, $a, text: "<?php\n// second\n", tab: 'A.php');
                 $this->assertSame(['DIFF_REJECTED', 'A.php'], $this->verdict($first));
                 $this->assertSame("<?php\n// second\n", $buffers->get($a)?->document->getText(), 'shown from the file as it was');
                 $terminal->clearOutput();
                 Services::resolve($ide, CommandRegistry::class)->run('mcp:review_claude_change');
-                $this->awaitPainted($tui, $terminal, 'Accept — keep and save');
+                $this->awaitPainted($tui, $terminal, needle: 'Accept — keep and save');
                 $this->assertNotContains('No change from Claude is waiting', Toasts::all($ide), 'one was');
                 $this->assertSame(['CLOSED_1_DIFF_TABS', false], $this->cliCall('closeAllDiffTabs'));
                 $this->assertSame(['DIFF_REJECTED', 'A.php'], $this->verdict($second));
@@ -562,11 +566,11 @@ final class McpClaudeCodeE2eTest extends TestCase
 
                 // Side by side turned off: the file and the dock alone.
                 $lifecycle = Services::resolve($ide, PluginLifecycle::class);
-                $settings = Probe::get(Probe::get($lifecycle, 'plugins'), 'settings');
+                $settings = Probe::get(Probe::get($lifecycle, property: 'plugins'), property: 'settings');
                 $this->assertInstanceOf(PluginSettings::class, $settings);
-                $settings->change('mcp', 'claudeSideBySide', false);
+                $settings->change('mcp', key: 'claudeSideBySide', value: false);
                 $before = \count($offered);
-                $id = $this->propose($tui, $terminal, $root.'/src/B.php', "<?php\n// quiet\n", 'B.php (quiet)');
+                $id = $this->propose($tui, $terminal, $root.'/src/B.php', text: "<?php\n// quiet\n", tab: 'B.php (quiet)');
                 $tui->handleInput("\x1b[B");
                 $tui->handleInput("\r");
                 $this->assertSame(['DIFF_REJECTED', 'B.php (quiet)'], $this->verdict($id));
@@ -582,7 +586,7 @@ final class McpClaudeCodeE2eTest extends TestCase
     {
         $buffers = Services::resolve($ide, BufferManager::class);
         $buffers->get($root.'/src/A.php')?->document->undo();
-        $this->propose($tui, $terminal, $root.'/src/B.php', "<?php\n// gone\n", 'B.php');
+        $this->propose($tui, $terminal, $root.'/src/B.php', text: "<?php\n// gone\n", tab: 'B.php');
         $editor = Services::resolve($ide, CodeEditorWidget::class);
         $this->assertNotSame([], $editor->decorations->remoteCaretsIn($root.'/src/B.php'), 'Claude Code at its change');
         $left = [];
@@ -613,13 +617,13 @@ final class McpClaudeCodeE2eTest extends TestCase
                 });
                 $dock = static fn (): array => \array_map(
                     static fn (array $row): array => [$row['path'], $row['line'], $row['text']],
-                    Probe::get(Services::resolve($ide, ResultsPanelWidget::class), 'results'),
+                    Probe::get(Services::resolve($ide, ResultsPanelWidget::class), property: 'results'),
                 );
 
-                $id = $this->propose($tui, $terminal, $a, "<?php\n// one\n", 'same');
+                $id = $this->propose($tui, $terminal, $a, text: "<?php\n// one\n", tab: 'same');
                 $tui->handleInput("\x1b\x15"); // put back
                 $this->verdict($id);
-                $id = $this->propose($tui, $terminal, $a, "<?php\n// one\n// two\n// three\n", 'unchanged');
+                $id = $this->propose($tui, $terminal, $a, text: "<?php\n// one\n// two\n// three\n", tab: 'unchanged');
                 $this->assertSame(
                     [
                         ['', 0, 'unchanged'],
@@ -630,7 +634,7 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $tui->handleInput("\x1b\x15");
                 $this->verdict($id);
 
-                $id = $this->propose($tui, $terminal, $a, "<?php\n// one\n// TWO\n// 2b\n// three\n", 'edit');
+                $id = $this->propose($tui, $terminal, $a, text: "<?php\n// one\n// TWO\n// 2b\n// three\n", tab: 'edit');
                 $this->assertSame(
                     [
                         ['',          0, 'edit'],
@@ -672,9 +676,9 @@ final class McpClaudeCodeE2eTest extends TestCase
         $this->runIde($project, $project->path('src/A.php'), [
             100 => function (Tui $tui, VirtualTerminal $terminal, Ide $ide) use ($a): void {
                 $this->connectCli($this->config->dir);
-                $dock = static fn (): array => \array_column(Probe::get(Services::resolve($ide, ResultsPanelWidget::class), 'results'), column_key: 'text');
+                $dock = static fn (): array => \array_column(Probe::get(Services::resolve($ide, ResultsPanelWidget::class), property: 'results'), column_key: 'text');
 
-                $id = $this->propose($tui, $terminal, $a, "\u{FEFF}<?php\r\n// one\r\n// TWO\r\n", 'crlf');
+                $id = $this->propose($tui, $terminal, $a, text: "\u{FEFF}<?php\r\n// one\r\n// TWO\r\n", tab: 'crlf');
 
                 $this->assertSame(['crlf', '  <?php', '  // one', '- // two', '+ // TWO', '  '], $dock(), 'one line changed, not all of them');
                 $this->assertSame("<?php\n// one\n// TWO\n", Services::resolve($ide, BufferManager::class)->get($a)?->document->getText(), 'no mark, no CR in the text');
@@ -705,7 +709,7 @@ final class McpClaudeCodeE2eTest extends TestCase
                     $copies[] = (string) \file_get_contents($proposal->proposedPath);
                 });
 
-                $id = $this->propose($tui, $terminal, $a, "<?php\n// one\n// TWO\n", 'lf');
+                $id = $this->propose($tui, $terminal, $a, text: "<?php\n// one\n// TWO\n", tab: 'lf');
 
                 $this->assertSame(["\u{FEFF}<?php\r\n// one\r\n// TWO\r\n"], $copies);
                 $tui->handleInput("\x1b\x15"); // put back
@@ -728,7 +732,7 @@ final class McpClaudeCodeE2eTest extends TestCase
         $this->runIde($project, $project->path('src/A.php'), [
             100 => function (Tui $tui, VirtualTerminal $terminal, Ide $ide) use ($a): void {
                 $this->connectCli($this->config->dir);
-                $id = $this->propose($tui, $terminal, $a, "<?php\n// TWO\n", 'gone');
+                $id = $this->propose($tui, $terminal, $a, text: "<?php\n// TWO\n", tab: 'gone');
                 Services::resolve($ide, BufferManager::class)->close($a); // the tab closed, edits and all
 
                 $tui->handleInput("\x1b\x19"); // keep
@@ -752,7 +756,7 @@ final class McpClaudeCodeE2eTest extends TestCase
         $this->runIde($project, $project->path('src/A.php'), [
             100 => function (Tui $tui, VirtualTerminal $terminal, Ide $ide) use ($a): void {
                 $this->connectCli($this->config->dir);
-                $id = $this->propose($tui, $terminal, $a, "<?php\n// TWO\n", 'stays');
+                $id = $this->propose($tui, $terminal, $a, text: "<?php\n// TWO\n", tab: 'stays');
                 [$cli, $frames, $inbox, $lastId] = [$this->cli, $this->cliFrames, $this->cliInbox, $this->cliId];
 
                 $this->connectCli($this->config->dir); // a second session…
@@ -781,12 +785,12 @@ final class McpClaudeCodeE2eTest extends TestCase
                 $buffers = Services::resolve($ide, BufferManager::class);
                 // A new file: proposed, turned down, gone again.
                 $c = $root.'/src/New/C.php';
-                $id = $this->propose($tui, $terminal, $c, "<?php\n// new\n", 'C.php');
+                $id = $this->propose($tui, $terminal, $c, text: "<?php\n// new\n", tab: 'C.php');
                 $this->assertFileExists($c);
                 $this->assertTrue(Services::resolve($ide, CommandRegistry::class)->has('mcp:review_claude_change'));
                 $terminal->clearOutput();
                 Services::resolve($ide, CommandRegistry::class)->run('mcp:review_claude_change');
-                $this->awaitPainted($tui, $terminal, 'Claude proposes changes to C.php');
+                $this->awaitPainted($tui, $terminal, needle: 'Claude proposes changes to C.php');
                 $tui->handleInput("\x1b[B");
                 $tui->handleInput("\r");
                 $this->assertSame(['DIFF_REJECTED', 'C.php'], $this->verdict($id));
@@ -794,7 +798,7 @@ final class McpClaudeCodeE2eTest extends TestCase
 
                 // A new file kept: left for the CLI to write, which it does only where no file is.
                 $d = $root.'/src/D.php';
-                $id = $this->propose($tui, $terminal, $d, "<?php\n// new\n", 'D.php');
+                $id = $this->propose($tui, $terminal, $d, text: "<?php\n// new\n", tab: 'D.php');
                 $tui->handleInput("\x1b\x19"); // ctrl+alt+y
                 $this->assertSame(['FILE_SAVED', "<?php\n// new\n"], $this->verdict($id));
                 $this->assertFileDoesNotExist($d);
@@ -818,11 +822,11 @@ final class McpClaudeCodeE2eTest extends TestCase
         $this->runIde($project, $project->path('src/A.php'), [
             100 => function (Tui $tui, VirtualTerminal $terminal, Ide $ide) use ($a): void {
                 $this->connectCli($this->config->dir);
-                $id = $this->propose($tui, $terminal, $a, "<?php\necho 'as proposed';\n", 'A.php');
+                $id = $this->propose($tui, $terminal, $a, text: "<?php\necho 'as proposed';\n", tab: 'A.php');
                 $view = Services::resolve($ide, ViewRegistry::class)->find('git');
                 $this->await(static fn (): bool => true === $view?->isOpen(), what: 'the comparison');
-                $this->awaitPainted($tui, $terminal, "echo 'as it is';");
-                $this->awaitPainted($tui, $terminal, "echo 'as proposed';");
+                $this->awaitPainted($tui, $terminal, needle: "echo 'as it is';");
+                $this->awaitPainted($tui, $terminal, needle: "echo 'as proposed';");
 
                 $tui->handleInput("\x1b\x19"); // ctrl+alt+y, from inside the comparison
                 $this->assertSame(['FILE_SAVED', "<?php\necho 'as proposed';\n"], $this->verdict($id));

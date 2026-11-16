@@ -114,12 +114,12 @@ final class Session
             // @mago-expect analysis:mixed-assignment -- decoded JSON is untyped; the checks below narrow every part that is read
             $message = \json_decode($line, associative: true, flags: \JSON_THROW_ON_ERROR);
         } catch (\JsonException) {
-            $this->error(null, self::PARSE_ERROR, 'Parse error');
+            $this->error(null, self::PARSE_ERROR, message: 'Parse error');
 
             return;
         }
         if (!\is_array($message) || \array_is_list($message)) {
-            $this->error(null, self::INVALID_REQUEST, 'Expected one JSON-RPC message object');
+            $this->error(null, self::INVALID_REQUEST, message: 'Expected one JSON-RPC message object');
 
             return;
         }
@@ -128,8 +128,8 @@ final class Session
         match (true) {
             null === $method => $this->unasked($id, $message),
             !\array_key_exists('id', $message) => $this->notified($method, \is_array($message['params'] ?? null) ? $message['params'] : []),
-            null === $id => $this->error(null, self::INVALID_REQUEST, 'A request id is a string or an integer'),
-            null !== ($message['params'] ?? null) && !\is_array($message['params']) => $this->error($id, self::INVALID_PARAMS, 'params must be an object'),
+            null === $id => $this->error(null, self::INVALID_REQUEST, message: 'A request id is a string or an integer'),
+            null !== ($message['params'] ?? null) && !\is_array($message['params']) => $this->error($id, self::INVALID_PARAMS, message: 'params must be an object'),
             default => $this->request($id, $method, \is_array($message['params'] ?? null) ? $message['params'] : []),
         };
     }
@@ -144,7 +144,7 @@ final class Session
     private function unasked(int|string|null $id, array $message): void
     {
         if (null !== ($message['id'] ?? null) && !\array_key_exists('result', $message) && !\array_key_exists('error', $message)) {
-            $this->error($id, self::INVALID_REQUEST, 'A request needs a method');
+            $this->error($id, self::INVALID_REQUEST, message: 'A request needs a method');
         }
     }
 
@@ -216,7 +216,7 @@ final class Session
     {
         $name = \is_string($params['name'] ?? null) ? $params['name'] : null;
         if (null === $name || (null !== ($params['arguments'] ?? null) && !\is_array($params['arguments']))) {
-            $this->error($id, self::INVALID_PARAMS, 'tools/call takes a tool name and an arguments object');
+            $this->error($id, self::INVALID_PARAMS, message: 'tools/call takes a tool name and an arguments object');
 
             return;
         }
@@ -255,7 +255,7 @@ final class Session
      * the value itself — which must be an object, so a list travels as
      * `{"items": [...]}`.
      *
-     * @param \Closure(array<string, mixed>, ToolCaller=): (string|array<array-key, mixed>|TextBlocks) $handler
+     * @param \Closure(array<string, mixed>, ToolCaller): (string|array<array-key, mixed>|TextBlocks) $handler
      * @param array<string, mixed>                                              $arguments
      *
      * @return array<string, mixed>

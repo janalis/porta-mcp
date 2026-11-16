@@ -48,47 +48,47 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
     {
         $api->registerSetting(
             'allowEdits',
-            'Let agents edit open files',
-            'bool',
-            true,
+            label: 'Let agents edit open files',
+            kind: 'bool',
+            default: true,
             hint: 'edit_buffer, replace_buffer, insert_text and format: unsaved, one undo step each. Off hides them',
         );
         $api->registerSetting(
             'allowSave',
-            'Let agents save files',
-            'bool',
-            false,
+            label: 'Let agents save files',
+            kind: 'bool',
+            default: false,
             hint: 'save_buffer — and Claude Code\'s saveDocument — write an open file to disk as Ctrl+S does; a file changed on disk is never overwritten. With edits allowed too, rename rewrites files that are not open',
         );
         $api->registerSetting(
             'allowPublish',
-            'Let agents post to forges',
-            'bool',
-            false,
+            label: 'Let agents post to forges',
+            kind: 'bool',
+            default: false,
             hint: 'review_reply, review_resolve, review_comment — any tool that publishes: what it posts, other people read, and Porta cannot take it back',
         );
         $api->registerSetting(
             'followAgent',
-            'Bring the file an agent edits to the front',
-            'bool',
-            false,
+            label: 'Bring the file an agent edits to the front',
+            kind: 'bool',
+            default: false,
             hint: 'off, an agent edits in a tab behind yours and your caret stays put',
         );
         $api->registerSetting(
             'showAgents',
-            'Show agents at work',
-            'bool',
-            true,
+            label: 'Show agents at work',
+            kind: 'bool',
+            default: true,
             hint: 'a ✦ in the agent\'s colour on the tab and tree row of each file it reads or edits, and who is doing what in the status bar',
         );
         $api->registerSetting(
             'showAgentCursor',
-            'Show an agent\'s cursor in the editor',
-            'bool',
-            true,
+            label: 'Show an agent\'s cursor in the editor',
+            kind: 'bool',
+            default: true,
             hint: 'a caret in its colour, with its name at the end of the line, where it reads or edits',
         );
-        $api->registerSetting('agentFade', 'Hide an agent after (seconds)', 'int', 10, hint: 'without it reading or editing the file', min: 2, max: 120);
+        $api->registerSetting('agentFade', label: 'Hide an agent after (seconds)', kind: 'int', default: 10, hint: 'without it reading or editing the file', min: 2, max: 120);
         $presence = new Presence(
             $api,
             static fn (): bool => true === $api->setting('showAgents'),
@@ -101,26 +101,35 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
         new SearchTools($api)->register();
         $api->registerSetting(
             'allowRuns',
-            'Let agents run tasks and tests',
-            'bool',
-            false,
+            label: 'Let agents run tasks and tests',
+            kind: 'bool',
+            default: false,
             hint: 'run, run_tests: the Run menu\'s tasks and PHPUnit, in the terminal panel where you can watch them; never in a project not trusted',
         );
         $api->registerSetting(
             'allowFileOps',
-            'Let agents create, move and delete files',
-            'bool',
-            false,
+            label: 'Let agents create, move and delete files',
+            kind: 'bool',
+            default: false,
             hint: 'create_file, move_file, delete_file: a deleted file\'s text goes to local history, restorable from Recent Changes',
         );
         new FileTools($api, $presence)->register();
-        $api->registerSetting('runTimeout', 'Wait for a run to end (seconds)', 'int', 300, hint: 'longer, and the agent is told it is still running', min: 1, max: 3600, step: 30);
+        $api->registerSetting(
+            'runTimeout',
+            label: 'Wait for a run to end (seconds)',
+            kind: 'int',
+            default: 300,
+            hint: 'longer, and the agent is told it is still running',
+            min: 1,
+            max: 3600,
+            step: 30,
+        );
         new RunTools($api, static fn (): int => (int) $api->setting('runTimeout'))->register();
         $api->registerSetting(
             'lspTimeout',
-            'Wait for a language server (seconds)',
-            'int',
-            15,
+            label: 'Wait for a language server (seconds)',
+            kind: 'int',
+            default: 15,
             hint: 'definition, references, hover, symbols: how long before the agent is told it did not answer',
             min: 1,
             max: 300,
@@ -148,7 +157,7 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
             ],
             static fn (): array => true === $api->setting('allowPublish') ? [] : [ToolEffect::Publishes],
         );
-        $log = DiagnosticLog::forRoot($api->projectRoot(), 'mcp');
+        $log = DiagnosticLog::forRoot($api->projectRoot(), channel: 'mcp');
         $server = new SocketServer(
             new SocketPath($api->projectRoot()),
             static fn (Closure $send, string $connection): Session => new Session($send, $catalog, Ide::VERSION, $connection, onClose: $presence->left(...)),
@@ -160,9 +169,9 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
         // and the selection, and opens files in this editor.
         $api->registerSetting(
             'claudeCode',
-            'Connect Claude Code to this editor',
-            'bool',
-            true,
+            label: 'Connect Claude Code to this editor',
+            kind: 'bool',
+            default: true,
             hint: 'the claude CLI (/ide, or started in Porta\'s terminal) sees the open file and selection, and opens files here',
         );
         // Resolved: the CLI matches its working directory, which the OS hands
@@ -171,12 +180,12 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
         $resolved = \realpath($api->projectRoot());
         $root = false === $resolved ? $api->projectRoot() : $resolved;
         $feed = new SelectionFeed($api);
-        $api->registerListTool(DiffReview::LIST, 'Claude\'s Proposed Change');
+        $api->registerListTool(DiffReview::LIST, title: 'Claude\'s Proposed Change');
         $api->registerSetting(
             'claudeSideBySide',
-            'Show Claude\'s proposed changes side by side',
-            'bool',
-            true,
+            label: 'Show Claude\'s proposed changes side by side',
+            kind: 'bool',
+            default: true,
             hint: 'in the git view, beside the file as it is — Esc closes it; the git plugin has to be on',
         );
         $diffs = new DiffReview($api, $presence, static fn (): bool => true === $api->setting('claudeSideBySide'));
@@ -201,46 +210,46 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
         );
         $claude = new ClaudeCodeLink($ideServer, $feed);
         $this->claude = $claude;
-        $nothingWaiting = static fn () => $api->notify($api->trans('No change from Claude is waiting'), ToastSeverity::Info, 4.0);
+        $nothingWaiting = static fn () => $api->notify($api->trans('No change from Claude is waiting'), ToastSeverity::Info, seconds: 4.0);
         $api->registerCommand(
             'accept_claude_change',
-            'Accept Claude\'s Change',
-            static function () use ($diffs, $nothingWaiting): void {
+            label: 'Accept Claude\'s Change',
+            handler: static function () use ($diffs, $nothingWaiting): void {
                 if (!$diffs->decideOldest(Verdict::Keep)) {
                     $nothingWaiting();
                 }
             },
-            ['ctrl+alt+y'],
+            keys: ['ctrl+alt+y'],
         );
         $api->registerCommand(
             'reject_claude_change',
-            'Reject Claude\'s Change',
-            static function () use ($diffs, $nothingWaiting): void {
+            label: 'Reject Claude\'s Change',
+            handler: static function () use ($diffs, $nothingWaiting): void {
                 if (!$diffs->decideOldest(Verdict::PutBack)) {
                     $nothingWaiting();
                 }
             },
-            ['ctrl+alt+u'],
+            keys: ['ctrl+alt+u'],
         );
-        $api->registerCommand('review_claude_change', 'Review Claude\'s Proposed Change', static function () use ($api, $diffs): void {
+        $api->registerCommand('review_claude_change', label: 'Review Claude\'s Proposed Change', handler: static function () use ($api, $diffs): void {
             if (!$diffs->review()) {
-                $api->notify($api->trans('No change from Claude is waiting'), ToastSeverity::Info, 4.0);
+                $api->notify($api->trans('No change from Claude is waiting'), ToastSeverity::Info, seconds: 4.0);
             }
         });
-        $api->registerCommand('mention_in_claude', 'Send Selection to Claude Code', static function () use ($api, $claude): void {
+        $api->registerCommand('mention_in_claude', label: 'Send Selection to Claude Code', handler: static function () use ($api, $claude): void {
             if (0 === $claude->mention()) {
-                $api->notify($api->trans('No Claude Code is connected — run /ide in claude, or start claude in the terminal'), ToastSeverity::Warn, 5.0);
+                $api->notify($api->trans('No Claude Code is connected — run /ide in claude, or start claude in the terminal'), ToastSeverity::Warn, seconds: 5.0);
             }
         });
 
         $api->onReady(static function () use ($api, $server, $claude): void {
             $error = $server->start();
             if (null !== $error) {
-                $api->notify($error, ToastSeverity::Warn, 6.0);
+                $api->notify($error, ToastSeverity::Warn, seconds: 6.0);
             }
             $why = true === $api->setting('claudeCode') ? $claude->start() : null;
             if (null !== $why) {
-                $api->notify($why, ToastSeverity::Warn, 6.0);
+                $api->notify($why, ToastSeverity::Warn, seconds: 6.0);
             }
         });
         $api->onSettingChanged(static function (string $key, bool|int|string $value) use ($api, $claude): void {
@@ -252,7 +261,7 @@ return new class('mcp') extends AbstractPlugin implements DisposablePlugin {
                 $claude->stop();
             }
             if (null !== $why) {
-                $api->notify($why, ToastSeverity::Warn, 6.0);
+                $api->notify($why, ToastSeverity::Warn, seconds: 6.0);
             }
         });
         $api->on(ToolsChanged::class, $server->toolsChanged(...));

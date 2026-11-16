@@ -250,7 +250,7 @@ final class SessionTest extends TestCase
     {
         $this->session()->receive(self::line(['id' => 6, 'method' => 'tools/call', 'params' => ['name' => 'nope']]));
 
-        $this->assertError(Session::INVALID_PARAMS, 6);
+        $this->assertError(Session::INVALID_PARAMS, id: 6);
         $this->assertSame('Unknown tool: nope', $this->last()['error']['message']);
     }
 
@@ -259,24 +259,24 @@ final class SessionTest extends TestCase
         $session = $this->session(['echo' => static fn (array $a): string => '']);
 
         $session->receive(self::line(['id' => 8, 'method' => 'tools/call', 'params' => ['arguments' => []]]));
-        $this->assertError(Session::INVALID_PARAMS, 8);
+        $this->assertError(Session::INVALID_PARAMS, id: 8);
 
         $session->receive(self::line(['id' => 9, 'method' => 'tools/call', 'params' => ['name' => 'echo', 'arguments' => 'x']]));
-        $this->assertError(Session::INVALID_PARAMS, 9);
+        $this->assertError(Session::INVALID_PARAMS, id: 9);
     }
 
     public function testScalarParamsAreInvalidParams(): void
     {
         $this->session()->receive(self::line(['id' => 10, 'method' => 'ping', 'params' => 3]));
 
-        $this->assertError(Session::INVALID_PARAMS, 10);
+        $this->assertError(Session::INVALID_PARAMS, id: 10);
     }
 
     public function testAnUnknownMethodIsMethodNotFound(): void
     {
         $this->session()->receive(self::line(['id' => 11, 'method' => 'resources/list']));
 
-        $this->assertError(Session::METHOD_NOT_FOUND, 11);
+        $this->assertError(Session::METHOD_NOT_FOUND, id: 11);
         $this->assertSame('Method not found: resources/list', $this->last()['error']['message'] ?? null);
     }
 
@@ -315,7 +315,7 @@ final class SessionTest extends TestCase
         $this->assertSame([], $this->sent, 'responses and id-less garbage are not answered');
 
         $session->receive(self::line(['id' => 14]));
-        $this->assertError(Session::INVALID_REQUEST, 14);
+        $this->assertError(Session::INVALID_REQUEST, id: 14);
 
         $session->receive(self::line(['id' => 3.5]));
         $this->assertError(Session::INVALID_REQUEST);

@@ -73,7 +73,7 @@ final readonly class Arguments
     /** A yes/no argument; absent is no. */
     public function flag(string $key): bool
     {
-        return $this->flagOr($key, false);
+        return $this->flagOr($key, default: false);
     }
 
     /** A yes/no argument, $default when absent. */

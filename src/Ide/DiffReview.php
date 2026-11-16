@@ -67,12 +67,12 @@ final class DiffReview
      */
     public function open(array $arguments, ToolCaller $caller): TextBlocks
     {
-        $path = self::string($arguments, 'new_file_path') ?? self::string($arguments, 'old_file_path') ?? throw new \InvalidArgumentException('new_file_path is required');
-        $sent = self::string($arguments, 'new_file_contents') ?? throw new \InvalidArgumentException('new_file_contents is required');
+        $path = self::string($arguments, key: 'new_file_path') ?? self::string($arguments, key: 'old_file_path') ?? throw new \InvalidArgumentException('new_file_path is required');
+        $sent = self::string($arguments, key: 'new_file_contents') ?? throw new \InvalidArgumentException('new_file_contents is required');
         // Held as the buffer holds the file — no mark, `\n` breaks — or a CRLF
         // file differs on every line and its mark goes in as a character.
         $proposed = DiskText::asHeld($sent);
-        $tab = self::string($arguments, 'tab_name') ?? $path;
+        $tab = self::string($arguments, key: 'tab_name') ?? $path;
         if (\array_key_exists($tab, $this->pending)) {
             $this->decide($tab, Verdict::PutBack); // replaced by this one
         }
@@ -89,7 +89,7 @@ final class DiffReview
             $this->api->notify(
                 $this->api->trans('Claude proposed a change to %file%, which has unsaved edits here — save or discard them, then ask again', ['%file%' => \basename($path)]),
                 ToastSeverity::Warn,
-                6.0,
+                seconds: 6.0,
             );
 
             return new TextBlocks(['DIFF_REJECTED', $tab]);
@@ -187,8 +187,8 @@ final class DiffReview
         $this->api->notify(
             Verdict::Keep === $verdict ? $this->api->trans('Kept Claude\'s change to %file%', ['%file%' => $file]) : $this->api->trans('Put %file% back as it was', ['%file%' => $file]),
             Verdict::Keep === $verdict ? ToastSeverity::Success : ToastSeverity::Info,
-            3.0,
-            self::SLOT,
+            seconds: 3.0,
+            slot: self::SLOT,
         );
         if (null !== $proposal['copy']) {
             \unlink($proposal['copy']);
@@ -221,8 +221,8 @@ final class DiffReview
         $this->api->notify(
             $this->api->trans('Claude proposes changes to %file% — Ctrl+Alt+Y keep · Ctrl+Alt+U put back', ['%file%' => \basename($this->pending[$tab]['path'])]),
             ToastSeverity::Info,
-            3600.0,
-            self::SLOT,
+            seconds: 3600.0,
+            slot: self::SLOT,
         );
     }
 

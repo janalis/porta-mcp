@@ -28,7 +28,7 @@ use Porta\Plugin\Api\ToolEffect;
 final readonly class ToolCatalog
 {
     /**
-     * @param \Closure(): list<array{plugin: string, id: string, description: string, inputSchema: array<string, mixed>, handler: \Closure(array<string, mixed>, ToolCaller=): (string|array<array-key, mixed>|TextBlocks), effect: ?ToolEffect}> $tools
+     * @param \Closure(): list<array{plugin: string, id: string, description: string, inputSchema: array<string, mixed>, handler: \Closure(array<string, mixed>, ToolCaller): (string|array<array-key, mixed>|TextBlocks), effect: ?ToolEffect}> $tools
      * @param \Closure(): list<string>                                                                                                                                                                $hidden   wire names not to offer right now
      * @param (\Closure(): list<ToolEffect>)|null                                                                                                                                                   $withheld effects not to offer right now, whichever plugin's tool has them
      */
@@ -76,13 +76,13 @@ final readonly class ToolCatalog
         ];
     }
 
-    /** @return (\Closure(array<string, mixed>, ToolCaller=): (string|array<array-key, mixed>|TextBlocks))|null the handler behind $name, or null when nothing by that name is offered */
+    /** @return (\Closure(array<string, mixed>, ToolCaller): (string|array<array-key, mixed>|TextBlocks))|null the handler behind $name, or null when nothing by that name is offered */
     public function find(string $name): ?\Closure
     {
         return ($this->offered()[$name] ?? null)['handler'] ?? null;
     }
 
-    /** @return array<string, array{description: string, inputSchema: array<string, mixed>, handler: \Closure(array<string, mixed>, ToolCaller=): (string|array<array-key, mixed>|TextBlocks), effect: ?ToolEffect}> */
+    /** @return array<string, array{description: string, inputSchema: array<string, mixed>, handler: \Closure(array<string, mixed>, ToolCaller): (string|array<array-key, mixed>|TextBlocks), effect: ?ToolEffect}> */
     private function offered(): array
     {
         $hidden = ($this->hidden)();

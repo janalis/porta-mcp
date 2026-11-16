@@ -40,7 +40,7 @@ final readonly class IdeTools
         private Presence $presence,
     ) {}
 
-    /** @return list<array{plugin: string, id: string, description: string, inputSchema: array<string, mixed>, handler: \Closure(array<string, mixed>, ToolCaller=): (string|array<array-key, mixed>|TextBlocks), effect: ToolEffect}> */
+    /** @return list<array{plugin: string, id: string, description: string, inputSchema: array<string, mixed>, handler: \Closure(array<string, mixed>, ToolCaller): (string|array<array-key, mixed>|TextBlocks), effect: ToolEffect}> */
     public function rows(): array
     {
         $file = ['type' => 'object', 'properties' => ['filePath' => ['type' => 'string']], 'required' => ['filePath']];
@@ -49,8 +49,8 @@ final readonly class IdeTools
         return [
             $this->row(
                 'openFile',
-                'Open a file in the editor, optionally at the first line holding startText.',
-                [
+                description: 'Open a file in the editor, optionally at the first line holding startText.',
+                schema: [
                     'type' => 'object',
                     'properties' => [
                         'filePath' => ['type' => 'string'],
@@ -62,26 +62,38 @@ final readonly class IdeTools
                     ],
                     'required' => ['filePath'],
                 ],
-                $this->openFile(...),
-                ToolEffect::Edits,
+                handler: $this->openFile(...),
+                effect: ToolEffect::Edits,
             ),
-            $this->row('getCurrentSelection', 'The selection in the file in front.', $none, fn (array $arguments): array => $this->selectionOr($this->selection->current()), ToolEffect::Reads),
-            $this->row('getLatestSelection', 'The last selection there was.', $none, fn (array $arguments): array => $this->selectionOr($this->selection->latest()), ToolEffect::Reads),
-            $this->row('getOpenEditors', 'The open tabs.', $none, $this->openEditors(...), ToolEffect::Reads),
-            $this->row('getWorkspaceFolders', 'The project folder.', $none, $this->workspaceFolders(...), ToolEffect::Reads),
+            $this->row(
+                'getCurrentSelection',
+                description: 'The selection in the file in front.',
+                schema: $none,
+                handler: fn (array $arguments): array => $this->selectionOr($this->selection->current()),
+                effect: ToolEffect::Reads,
+            ),
+            $this->row(
+                'getLatestSelection',
+                description: 'The last selection there was.',
+                schema: $none,
+                handler: fn (array $arguments): array => $this->selectionOr($this->selection->latest()),
+                effect: ToolEffect::Reads,
+            ),
+            $this->row('getOpenEditors', description: 'The open tabs.', schema: $none, handler: $this->openEditors(...), effect: ToolEffect::Reads),
+            $this->row('getWorkspaceFolders', description: 'The project folder.', schema: $none, handler: $this->workspaceFolders(...), effect: ToolEffect::Reads),
             $this->row(
                 'getDiagnostics',
-                'Diagnostics for a file, or every open one.',
-                ['type' => 'object', 'properties' => ['uri' => ['type' => 'string']]],
-                $this->diagnostics(...),
-                ToolEffect::Reads,
+                description: 'Diagnostics for a file, or every open one.',
+                schema: ['type' => 'object', 'properties' => ['uri' => ['type' => 'string']]],
+                handler: $this->diagnostics(...),
+                effect: ToolEffect::Reads,
             ),
-            $this->row('checkDocumentDirty', 'Whether an open file has unsaved edits.', $file, $this->dirty(...), ToolEffect::Reads),
-            $this->row('saveDocument', 'Save an open file.', $file, $this->save(...), ToolEffect::Writes),
+            $this->row('checkDocumentDirty', description: 'Whether an open file has unsaved edits.', schema: $file, handler: $this->dirty(...), effect: ToolEffect::Reads),
+            $this->row('saveDocument', description: 'Save an open file.', schema: $file, handler: $this->save(...), effect: ToolEffect::Writes),
             $this->row(
                 'openDiff',
-                'Show a proposed new text for a file and wait for the user to accept or reject it.',
-                [
+                description: 'Show a proposed new text for a file and wait for the user to accept or reject it.',
+                schema: [
                     'type' => 'object',
                     'properties' => [
                         'old_file_path' => ['type' => 'string'],
@@ -91,31 +103,31 @@ final readonly class IdeTools
                     ],
                     'required' => ['old_file_path', 'new_file_path', 'new_file_contents', 'tab_name'],
                 ],
-                $this->diffs->open(...),
-                ToolEffect::Writes,
+                handler: $this->diffs->open(...),
+                effect: ToolEffect::Writes,
             ),
             $this->row(
                 'close_tab',
-                'Close a tab this connection opened.',
-                ['type' => 'object', 'properties' => ['tab_name' => ['type' => 'string']]],
-                static fn (array $arguments): string => 'TAB_CLOSED',
-                ToolEffect::Edits,
+                description: 'Close a tab this connection opened.',
+                schema: ['type' => 'object', 'properties' => ['tab_name' => ['type' => 'string']]],
+                handler: static fn (array $arguments): string => 'TAB_CLOSED',
+                effect: ToolEffect::Edits,
             ),
             $this->row(
                 'closeAllDiffTabs',
-                'Turn down every proposal still waiting for the user.',
-                $none,
-                fn (array $arguments): string => \sprintf('CLOSED_%d_DIFF_TABS', $this->diffs->rejectAll()),
-                ToolEffect::Edits,
+                description: 'Turn down every proposal still waiting for the user.',
+                schema: $none,
+                handler: fn (array $arguments): string => \sprintf('CLOSED_%d_DIFF_TABS', $this->diffs->rejectAll()),
+                effect: ToolEffect::Edits,
             ),
         ];
     }
 
     /**
      * @param array<string, mixed>                                               $schema
-     * @param \Closure(array<string, mixed>, ToolCaller=): (string|array<array-key, mixed>|TextBlocks) $handler
+     * @param \Closure(array<string, mixed>, ToolCaller): (string|array<array-key, mixed>|TextBlocks) $handler
      *
-     * @return array{plugin: string, id: string, description: string, inputSchema: array<string, mixed>, handler: \Closure(array<string, mixed>, ToolCaller=): (string|array<array-key, mixed>|TextBlocks), effect: ToolEffect}
+     * @return array{plugin: string, id: string, description: string, inputSchema: array<string, mixed>, handler: \Closure(array<string, mixed>, ToolCaller): (string|array<array-key, mixed>|TextBlocks), effect: ToolEffect}
      */
     private function row(string $id, string $description, array $schema, \Closure $handler, ToolEffect $effect): array
     {
