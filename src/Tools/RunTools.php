@@ -6,7 +6,9 @@ namespace Porta\McpPlugin\Tools;
 
 use Porta\Plugin\Api\PluginApi;
 use Porta\Plugin\Api\ToolEffect;
+use Porta\Support\ComposerLayout;
 use Porta\Support\FiberWait;
+use Symfony\Component\Filesystem\Path;
 
 /**
  * The Run menu and the project's tests as tools, in the IDE's terminal panel
@@ -106,9 +108,9 @@ final readonly class RunTools
     private function tests(array $arguments): array
     {
         $read = new Arguments($arguments, $this->api->projectRoot());
-        $phpunit = $read->root().'/vendor/bin/phpunit';
+        $phpunit = ComposerLayout::of($read->root())->binDir.'/phpunit';
         if (!\is_file($phpunit)) {
-            throw new \RuntimeException('This project has no vendor/bin/phpunit — composer require --dev phpunit/phpunit, or run a configuration instead');
+            throw new \RuntimeException('This project has no '.Path::makeRelative($phpunit, $read->root()).' — composer require --dev phpunit/phpunit, or run a configuration instead');
         }
         $command = [$phpunit];
         $path = $read->path();

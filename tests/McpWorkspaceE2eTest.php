@@ -337,11 +337,12 @@ final class McpWorkspaceE2eTest extends TestCase
             },
         ]);
 
-        $bare = self::project(['allowRuns' => true]);
+        // Its composer.json moves the binaries: a vendor/bin/phpunit is not composer's.
+        $bare = self::project(['allowRuns' => true], ['composer.json' => '{"config":{"bin-dir":"bin"}}', 'vendor/bin/phpunit' => '']);
         $this->runIde($bare, file: null, steps: [
             100 => function (Tui $tui, $terminal, Ide $ide) use ($bare): void {
                 $this->connect($bare);
-                $this->refused('run_tests', [], says: 'This project has no vendor/bin/phpunit');
+                $this->refused('run_tests', [], says: 'This project has no bin/phpunit');
             },
         ]);
     }
