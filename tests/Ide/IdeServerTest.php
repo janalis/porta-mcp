@@ -145,6 +145,9 @@ final class IdeServerTest extends TestCase
         } finally {
             $writer->close();
         }
+        // Hung up on after its linger, not dropped for queueing too much: that
+        // too ends at no client, and would leave the linger unexercised.
+        $this->assertNotContains('Claude Code client dropped: write queue overflow', $this->logged);
     }
 
     public function testStopHangsUpOnEveryClientAndTakesTheLockBack(): void
