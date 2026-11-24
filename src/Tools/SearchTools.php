@@ -6,6 +6,7 @@ namespace Porta\McpPlugin\Tools;
 
 use Porta\Plugin\Api\PluginApi;
 use Porta\Plugin\Api\ToolEffect;
+use Porta\Search\GrepAnswers;
 use Porta\Search\ProjectSearch;
 use Porta\Search\SearchOptions;
 use Porta\Support\FiberWait;
@@ -30,9 +31,14 @@ final readonly class SearchTools
      */
     private const float TIMEOUT = 60.0;
 
+    /** What the project's grep takes, asked once for every search an agent makes, not once a call. */
+    private GrepAnswers $answers;
+
     public function __construct(
         private PluginApi $api,
-    ) {}
+    ) {
+        $this->answers = new GrepAnswers($api->projectRoot());
+    }
 
     public function register(): void
     {
@@ -78,7 +84,7 @@ final readonly class SearchTools
             $scope = \array_map(static fn (string $path): string => $path === $root ? '.' : \substr($path, \strlen($root) + 1), $paths);
         }
         $mask = \is_string($arguments['include'] ?? null) ? $arguments['include'] : '';
-        $engine = new ProjectSearch($root);
+        $engine = new ProjectSearch($root, answers: $this->answers);
 
         /** @var list<array{path: string, line: int, text: string}>|null $rows */
         $rows = FiberWait::within(self::TIMEOUT, static fn (\Closure $done) => $engine->search($query, $done, $options, $scope, $mask), timedOut: null);
