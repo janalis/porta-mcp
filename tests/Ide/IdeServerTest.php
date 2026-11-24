@@ -131,7 +131,11 @@ final class IdeServerTest extends TestCase
         // non-blocking socket sends part of it.
         $writer = new NonBlockingWriter($this->cli, static fn (string $reason): null => null, 64 * 1_048_576);
         $request = self::clientFrame('{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"echo","arguments":{"word":"'.\str_repeat('x', times: 1_048_576).'"}}}');
-        for ($i = 0; $i < 3; ++$i) {
+        // Seven: more than the kernel takes for a client that reads nothing, so
+        // answers are still queued at the CLOSE and the linger runs; fewer than
+        // the 8 MiB the server queues before it drops a client. With three, they
+        // all drained first in 6 of 30 runs, and the linger went unrun.
+        for ($i = 0; $i < 7; ++$i) {
             $writer->write($request); // answers queue up: this client reads none of them
         }
         $writer->write(self::clientFrame("\x03\xe8", WebSocketFrames::CLOSE));
